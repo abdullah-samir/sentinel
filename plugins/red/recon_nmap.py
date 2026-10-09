@@ -15,6 +15,11 @@ Mode precedence: CLI flag (``--fast``/``--full``) overrides config
 Privilege: ``-sS`` (SYN) + ``-O`` only when ``config.nmap_privileged`` AND root;
 otherwise it logs and falls back to ``-sT`` (raw sockets needed for SYN/OS).
 
+Host discovery: ``config.nmap_pn`` (``--pn`` / ``SENTINEL_NMAP_PN``) adds ``-Pn``,
+which skips host discovery and treats every address as up. Useful for hosts that
+drop ping, but **much slower on a large CIDR** (every host is fully scanned).
+Composes with fast/full and privileged.
+
 Timeout: ``config.nmap_timeout`` maps to nmap ``--host-timeout``; nmap finishes
 cleanly and every host that completed in time is saved (partial results are
 kept, not discarded, and a timed-out host never errors the run).
@@ -87,6 +92,8 @@ class ReconNmap(Module):
         description="Host discovery, ports, service/OS fingerprint",
         requires_tools=["nmap"],
         provides=["assets", "open_services"],
+        phase="1",
+        display="Recon (nmap)",
     )
 
     def is_available(self, ctx) -> Tuple[bool, str]:
@@ -127,6 +134,8 @@ class ReconNmap(Module):
             else (FAST_TOP_PORTS if fast else FULL_TOP_PORTS)
 
         parts = ["-sS" if privileged else "-sT"]
+        if cfg.nmap_pn:
+            parts.append("-Pn")                  # skip host discovery; all hosts "up"
         if not fast:
             parts.append("-sV")                  # version detection: full only
             if privileged:
@@ -154,6 +163,9 @@ class ReconNmap(Module):
         arguments, fast = self._build_args(ctx, target)
         ctx.log.info("recon: scanning %s (%s mode) — nmap %s",
                      target, "fast" if fast else "full", arguments)
+        if ctx.config.nmap_pn:
+            ctx.log.info("recon: -Pn active — host discovery skipped; every address "
+                         "is treated as up (slower on large CIDRs)")
 
         try:
             scanner = nmap.PortScanner()
@@ -168,27 +180,55 @@ class ReconNmap(Module):
             )
             return
 
+        # -sS appears iff the scan is privileged; privileged on-link scans use
+        # nmap's ARP discovery (finds ping-silent hosts) and report MAC/vendor.
+        privileged = "-sS" in arguments.split()
+        if privileged:
+            ctx.log.info("recon: privileged scan — nmap uses ARP discovery for on-link "
+                         "hosts (finds ping-silent devices) and reports MAC/vendor")
+        else:
+            ctx.log.info("recon: unprivileged scan — MAC/vendor unavailable "
+                         "(ARP/OS detection need root)")
+
         hosts = scanner.all_hosts()
+        pn = bool(ctx.config.nmap_pn)
         up_count = 0
+        dropped = 0
         svc_count = 0
         for host in hosts:
             data = scanner[host]
             if data.state() != "up":
                 continue
+            emitted = self._record_host(ctx, scanner, host, pn)
+            if emitted is None:          # -Pn address with no response -> not alive
+                dropped += 1
+                continue
             up_count += 1
-            svc_count += self._record_host(ctx, scanner, host)
+            svc_count += emitted
 
+        if pn:
+            ctx.log.info('recon: under -Pn, "alive" = responded with >=1 open/closed port '
+                         "or a MAC (not merely pinged); %d alive, %d no-response "
+                         "address(es) dropped", up_count, dropped)
         # Hosts that hit --host-timeout are simply absent/down here; the scan
         # still finished cleanly and everything that completed is saved.
-        ctx.log.info("recon: complete — %d/%d host(s) up, %d open service(s)",
+        ctx.log.info("recon: complete — %d host(s) up (of %d scanned), %d open service(s)",
                      up_count, len(hosts), svc_count)
 
-    def _record_host(self, ctx, scanner, host: str) -> int:
-        """Emit one Asset + per-service Findings for a single up host.
-        Returns the number of open-service findings emitted."""
+    def _record_host(self, ctx, scanner, host: str, pn: bool):
+        """Emit one Asset + per-service Findings for a host, or return None to
+        drop it.
+
+        Under -Pn there is no host discovery, so nmap marks *every* scanned
+        address "up". An address is only kept when it shows genuine liveness —
+        a responsive (open/closed) port, a MAC (ARP reply), a hostname, or an OS
+        match — so dead addresses that -Pn forced "up" are not counted as hosts.
+        Default discovery already reports only live hosts, so nothing is dropped
+        there. Returns the number of open-service findings emitted, or None when
+        the host was dropped."""
         data = scanner[host]
 
-        # MAC / vendor (only present when the scan is on the same L2 segment)
+        # MAC / vendor (populated by nmap's ARP on a privileged on-link scan)
         addresses = data.get("addresses", {}) or {}
         mac = addresses.get("mac", "")
         vendor_map = data.get("vendor", {}) or {}
@@ -208,13 +248,20 @@ class ReconNmap(Module):
             except Exception:  # noqa: BLE001
                 os_guess = osmatch[0].get("name", "")
 
+        # One pass: collect open ports + pending findings, and note whether the
+        # host answered any probe (an open OR closed port proves it is alive; a
+        # "filtered"/unanswered port does not).
         open_ports = []
-        svc_count = 0
+        pending = []
+        responsive_port = False
         for proto in data.all_protocols():
             if proto not in ("tcp", "udp", "sctp"):
                 continue
             for raw_port, info in sorted(data[proto].items()):
-                if info.get("state") != "open":
+                state = info.get("state", "")
+                if state in ("open", "closed"):
+                    responsive_port = True
+                if state != "open":
                     continue
                 port = int(raw_port)
                 open_ports.append(port)
@@ -226,20 +273,24 @@ class ReconNmap(Module):
                 sev, reason = _classify(port, name, blob)
                 svc = " ".join(x for x in (product, version, extrainfo) if x)
                 tags = ["network", "open_service"] + ([name] if name else [])
-                ctx.store.add_finding(
-                    module=self.manifest.name, type="open_service",
-                    severity=sev, target=host,
+                pending.append(dict(
+                    type="open_service", severity=sev, target=host,
                     title=f"{name or 'unknown'} ({port}/{proto}) open",
-                    detail=reason,
-                    evidence=f"{port}/{proto} {name} {svc}".strip(),
+                    detail=reason, evidence=f"{port}/{proto} {name} {svc}".strip(),
                     tags=tags,
-                )
-                svc_count += 1
+                ))
 
+        responded = responsive_port or bool(mac) or bool(hostname) or bool(os_guess)
+        if pn and not responded:
+            ctx.log.debug("recon: %s returned nothing under -Pn; dropping (not alive)", host)
+            return None
+
+        for pf in pending:
+            ctx.store.add_finding(module=self.manifest.name, **pf)
         open_ports = sorted(set(open_ports))
         ctx.store.add_asset(
             ip=host, alive=True, open_ports=open_ports,
             os_guess=os_guess, mac=mac, vendor=vendor, hostname=hostname,
         )
         ctx.log.info("recon: %s up, %d port(s)", host, len(open_ports))
-        return svc_count
+        return len(pending)

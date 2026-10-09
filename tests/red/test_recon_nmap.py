@@ -283,3 +283,95 @@ def test_scan_exception_is_recorded(tmp_path, monkeypatch):
     ReconNmap().run(ctx)
     errs = [f for f in ctx.store.findings() if f.type == "module_error"]
     assert errs and "boom" in errs[0].detail
+
+
+# --- -Pn (skip host discovery) -------------------------------------------
+def test_pn_absent_by_default(tmp_path):
+    args, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_fast=True), "10.0.0.0/24")
+    assert "-Pn" not in args
+
+
+def test_pn_adds_flag(tmp_path):
+    args, _ = ReconNmap()._build_args(
+        make_ctx(tmp_path, nmap_fast=True, nmap_pn=True), "10.0.0.0/24")
+    assert "-Pn" in args
+
+
+def test_pn_composes_with_privileged_full(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    args, _ = ReconNmap()._build_args(
+        make_ctx(tmp_path, nmap_fast=False, nmap_privileged=True, nmap_pn=True), "10.0.0.5")
+    assert "-Pn" in args and "-sS" in args and "-sV" in args and "-O" in args
+
+
+# --- -Pn host accounting: alive must mean "responded", not "was scanned" ---
+def _open_host(port=22, name="ssh"):
+    return FakeHost(state="up", protocols={"tcp": {
+        port: {"state": "open", "name": name, "product": "", "version": "", "extrainfo": ""}}})
+
+
+def _dead_host(port=80):
+    # -Pn forces state "up", but the address answered nothing (all filtered, no MAC)
+    return FakeHost(state="up", protocols={"tcp": {
+        port: {"state": "filtered", "name": "http", "product": "", "version": "", "extrainfo": ""}}})
+
+
+def test_pn_drops_no_response_addresses(tmp_path, monkeypatch):
+    hosts = {ip: _open_host() for ip in ("10.0.0.5", "10.0.0.6", "10.0.0.7")}
+    for i in range(10, 30):                      # ~20 dead addresses forced "up" by -Pn
+        hosts[f"10.0.0.{i}"] = _dead_host()
+    hosts["10.0.0.40"] = FakeHost(state="up", protocols={"tcp": {}})   # nothing at all
+    monkeypatch.setattr(nmap, "PortScanner", lambda: FakeScanner(hosts))
+
+    ctx = make_ctx(tmp_path, nmap_pn=True, nmap_fast=True)
+    ReconNmap().run(ctx)
+
+    assets = ctx.store.assets()
+    assert len(assets) == 3                      # not 24 — only responders kept
+    assert {a.ip for a in assets} == {"10.0.0.5", "10.0.0.6", "10.0.0.7"}
+    assert all(a.alive for a in assets)
+    ctx.store.run.compute_stats()
+    assert ctx.store.run.stats["hosts_up"] == 3
+
+
+def test_pn_keeps_ping_silent_host_with_mac(tmp_path, monkeypatch):
+    # ARP-replied (has MAC) but all ports filtered -> still alive under -Pn
+    live = FakeHost(state="up",
+                    protocols={"tcp": {80: {"state": "filtered", "name": "http",
+                                            "product": "", "version": "", "extrainfo": ""}}},
+                    addresses={"ipv4": "10.0.0.9", "mac": "DE:AD:BE:EF:00:09"},
+                    vendor={"DE:AD:BE:EF:00:09": "Acme"})
+    hosts = {"10.0.0.9": live, "10.0.0.50": FakeHost(state="up", protocols={"tcp": {}})}
+    monkeypatch.setattr(nmap, "PortScanner", lambda: FakeScanner(hosts))
+
+    ctx = make_ctx(tmp_path, nmap_pn=True, nmap_fast=True)
+    ReconNmap().run(ctx)
+
+    assets = ctx.store.assets()
+    assert [a.ip for a in assets] == ["10.0.0.9"]     # MAC proves life; dead one dropped
+    assert assets[0].mac == "DE:AD:BE:EF:00:09" and assets[0].vendor == "Acme"
+    assert assets[0].open_ports == []
+
+
+def test_mac_vendor_parsed_when_present(tmp_path, monkeypatch):
+    host = FakeHost(state="up", protocols={"tcp": {
+        22: {"state": "open", "name": "ssh", "product": "", "version": "", "extrainfo": ""}}},
+        addresses={"ipv4": "10.0.0.8", "mac": "AA:BB:CC:00:00:08"},
+        vendor={"AA:BB:CC:00:00:08": "Raspberry Pi"})
+    monkeypatch.setattr(nmap, "PortScanner", lambda: FakeScanner({"10.0.0.8": host}))
+
+    ctx = make_ctx(tmp_path, nmap_fast=True)          # default discovery
+    ReconNmap().run(ctx)
+    a = ctx.store.assets()[0]
+    assert a.mac == "AA:BB:CC:00:00:08" and a.vendor == "Raspberry Pi"
+
+
+def test_default_discovery_keeps_up_host_without_open_ports(tmp_path, monkeypatch):
+    # No -Pn: nmap only reports up hosts, so a firewalled up host (all filtered,
+    # no MAC) is authoritative and must NOT be dropped.
+    monkeypatch.setattr(nmap, "PortScanner", lambda: FakeScanner({"10.0.0.2": _dead_host()}))
+    ctx = make_ctx(tmp_path, nmap_fast=True)          # nmap_pn defaults False
+    ReconNmap().run(ctx)
+    assets = ctx.store.assets()
+    assert [a.ip for a in assets] == ["10.0.0.2"]     # kept under default discovery
+    assert assets[0].alive is True and assets[0].open_ports == []

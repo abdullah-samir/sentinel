@@ -7,5 +7,8 @@
 quick_recon:
   steps: [red.recon_nmap]
 
+capture_only:
+  steps: [blue.capture_tshark]
+
 full_audit:
   steps: [red.recon_nmap, blue.capture_tshark, ml.detector_template]

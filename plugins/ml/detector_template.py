@@ -31,6 +31,8 @@ class DetectorTemplate(Module):
                     "scores extracted features",
         provides=["ml_detections"],
         depends_on=["capture"],   # consumes what blue capture publishes
+        phase="1",
+        display="ML detector (template)",
     )
 
     # --- availability -----------------------------------------------------

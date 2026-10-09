@@ -6,6 +6,7 @@ dataclass of JSON-friendly types (str-enums, string timestamps, lists/dicts) so
 """
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -39,14 +40,34 @@ def utcnow_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def make_run_id(workflow: str) -> str:
-    """Filesystem-safe, time-sortable, unique run id.
+def _slug_workflow(workflow: str) -> str:
+    """Lowercase the workflow, collapsing any non-alphanumeric run to '-'."""
+    s = re.sub(r"[^a-z0-9]+", "-", str(workflow).lower()).strip("-")
+    return s or "workflow"
 
-    Shape: ``20261007T143210_quick_recon_a1b2c3``.
+
+def _slug_target(target: str) -> str:
+    """Filesystem-safe target slug: '/' and ':' -> '-', strip anything outside
+    [a-z0-9._-]. e.g. '10.10.1.0/24' -> '10.10.1.0-24'."""
+    s = str(target).strip().lower().replace("/", "-").replace(":", "-")
+    return re.sub(r"[^a-z0-9._-]+", "", s).strip("-")
+
+
+def make_run_id(workflow: str, target: str = "") -> str:
+    """Human-readable, filesystem-safe, time-sortable, unique run id.
+
+    Shape: ``YYYY-MM-DD_HH-MM_<workflow>_<target>_<shortid>`` e.g.
+    ``2026-10-09_18-28_quick-recon_10.10.1.0-24_e369d6``. The minute-precision
+    timestamp keeps ids lexically time-sortable; the 6-char uuid keeps them
+    unique. The target segment is omitted when empty (e.g. wireless runs).
     """
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    safe_wf = "".join(c if (c.isalnum() or c in "-_") else "_" for c in workflow)
-    return f"{stamp}_{safe_wf}_{uuid.uuid4().hex[:6]}"
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
+    parts = [stamp, _slug_workflow(workflow)]
+    tgt = _slug_target(target)
+    if tgt:
+        parts.append(tgt)
+    parts.append(uuid.uuid4().hex[:6])
+    return "_".join(parts)
 
 
 def coerce_severity(value) -> str:

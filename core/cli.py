@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import logging
+import os
 import socket
 import sys
 from typing import Optional
@@ -23,7 +24,7 @@ from core.context import RunContext
 from core.events import EventBus
 from core.hardware import build_hardware
 from core.log import setup_logging
-from core.schema import RunResult, SEVERITY_RANK, utcnow_iso
+from core.schema import RunResult, SEVERITY_RANK, make_run_id, utcnow_iso
 from core.store import Store
 from core.workflows import load_workflows
 
@@ -59,14 +60,6 @@ def _probe_context(config: Config) -> RunContext:
     )
 
 
-def _rich_console():
-    try:
-        from rich.console import Console
-        return Console()
-    except Exception:  # noqa: BLE001
-        return None
-
-
 # --------------------------------------------------------------------------
 # subcommand: modules
 # --------------------------------------------------------------------------
@@ -86,25 +79,15 @@ def cmd_modules(args) -> int:
             ok, reason = mods[name]().is_available(ctx)
         except Exception as e:  # noqa: BLE001
             ok, reason = False, f"error: {e}"
-        rows.append((name, m.category, m.title,
-                     ",".join(m.requires_tools) or "-",
-                     ",".join(m.requires_hw) or "-",
-                     "yes" if m.offensive else "no",
-                     "available" if ok else f"unavailable ({reason})"))
+        status = "available" if ok else f"unavailable: {reason}"
+        rows.append((m.phase or "?", name, m.display or m.title, m.offensive, status))
 
-    console = _rich_console()
-    if console is not None:
-        from rich.table import Table
-        table = Table(title=f"Sentinel modules ({len(rows)})", show_lines=False)
-        for col in ("name", "cat", "title", "tools", "hw", "offensive", "status"):
-            table.add_column(col, overflow="fold")
-        for r in rows:
-            table.add_row(*r)
-        console.print(table)
-    else:
-        for r in rows:
-            print(f"{r[0]:<24} [{r[1]}] {r[2]} | tools={r[3]} hw={r[4]} "
-                  f"offensive={r[5]} | {r[6]}")
+    # group by phase (then name) and print one labeled line per module
+    rows.sort(key=lambda r: (r[0], r[1]))
+    print(f"Sentinel modules ({len(rows)}):")
+    for phase, name, display, offensive, status in rows:
+        off = " (offensive)" if offensive else ""
+        print(f"  Phase {phase} · {name} — {display}{off} [{status}]")
     return 0
 
 
@@ -141,6 +124,8 @@ def cmd_run(args) -> int:
         config.nmap_top_ports = args.nmap_top_ports
     if args.nmap_timing is not None:
         config.nmap_timing = args.nmap_timing
+    if args.nmap_pn:
+        config.nmap_pn = True
 
     target = args.target
     if not target:
@@ -222,6 +207,40 @@ def cmd_report(args) -> int:
 
 
 # --------------------------------------------------------------------------
+# subcommand: analyze (offline analysis of an existing pcap)
+# --------------------------------------------------------------------------
+def cmd_analyze(args) -> int:
+    from plugins.blue.capture_tshark import CaptureTshark
+
+    config = Config.from_env()
+    config.ensure_dirs()
+    pcap = args.pcap
+
+    run = RunResult(run_id=make_run_id("analyze", os.path.basename(pcap)),
+                    workflow="analyze", target=pcap, started_at=utcnow_iso())
+    store = Store(run, config.results_dir / f"{run.run_id}.json")
+    ctx = RunContext(target=pcap, workflow="analyze", config=config, store=store,
+                     log=logging.getLogger("sentinel.analyze"),
+                     hw=build_hardware(config), events=EventBus())
+
+    # analyze is defensive: a missing/unreadable pcap yields a clean error
+    # finding, never a traceback.
+    CaptureTshark().analyze(pcap, ctx)
+    run.finished_at = utcnow_iso()
+    run.compute_stats()
+    store.save()
+
+    print(f"analysis complete: {run.run_id}")
+    print(f"  pcap:       {pcap}")
+    print(f"  written to: {store.path}")
+    by_sev = run.stats.get("findings_by_severity", {})
+    ordered = sorted(by_sev, key=lambda s: SEVERITY_RANK.get(s, 0), reverse=True)
+    summary = ", ".join(f"{s}={by_sev[s]}" for s in ordered if by_sev[s]) or "none"
+    print(f"  findings:   {run.stats.get('findings_total', 0)} ({summary})")
+    return 0
+
+
+# --------------------------------------------------------------------------
 # argument parser
 # --------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
@@ -257,6 +276,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="scan the N most common ports (overrides the fast/full default)")
     pr.add_argument("--timing", dest="nmap_timing", metavar="0-5",
                     help="nmap timing template (default 4)")
+    pr.add_argument("--pn", dest="nmap_pn", action="store_true",
+                    help="skip host discovery (nmap -Pn): treat every address as up. "
+                         "Use for hosts that block ping; MUCH slower on a large CIDR.")
     # Neither --fast nor --full given -> None -> auto by target size.
     pr.set_defaults(func=cmd_run, nmap_fast=None, nmap_timeout=None,
                     nmap_top_ports=None, nmap_timing=None)
@@ -274,6 +296,10 @@ def build_parser() -> argparse.ArgumentParser:
     prep.add_argument("--open", dest="open", action="store_true",
                       help="open the result in a browser")
     prep.set_defaults(func=cmd_report)
+
+    pa = sub.add_parser("analyze", help="analyze an existing pcap (offline)")
+    pa.add_argument("pcap", help="path to a .pcap/.pcapng file")
+    pa.set_defaults(func=cmd_analyze)
     return p
 
 

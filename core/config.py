@@ -34,6 +34,14 @@ class Config:
     nmap_top_ports: int = 0             # 0 = auto (100 fast / 1000 full); else override
     nmap_timeout: int = 300             # nmap --host-timeout seconds (0 disables)
     nmap_timing: str = "4"              # nmap -T<timing> (0-5); 4 = aggressive
+    nmap_pn: bool = False               # -Pn: skip host discovery (slow on big CIDRs)
+
+    # --- packet capture tuning (blue.capture_tshark reads these) ----------
+    capture_iface: str = ""             # "" -> auto-select (default route / first up)
+    capture_seconds: int = 30           # primary stop: -a duration:
+    capture_max_packets: int = 20000    # stop: -c
+    capture_max_filesize_kb: int = 51200  # stop: -a filesize:
+    capture_filter: str = ""            # optional BPF, e.g. "not port 22" (exclude SSH)
 
     # --- derived paths (never serialized into run JSON) -------------------
     @property
@@ -96,4 +104,22 @@ class Config:
         timing = os.environ.get("SENTINEL_NMAP_TIMING")
         if timing:
             cfg.nmap_timing = timing
+        if os.environ.get("SENTINEL_NMAP_PN") == "1":
+            cfg.nmap_pn = True
+        # packet capture tuning
+        iface = os.environ.get("SENTINEL_CAPTURE_IFACE")
+        if iface:
+            cfg.capture_iface = iface
+        for env_key, attr in (("SENTINEL_CAPTURE_SECONDS", "capture_seconds"),
+                              ("SENTINEL_CAPTURE_MAX_PACKETS", "capture_max_packets"),
+                              ("SENTINEL_CAPTURE_MAX_FILESIZE_KB", "capture_max_filesize_kb")):
+            raw = os.environ.get(env_key)
+            if raw:
+                try:
+                    setattr(cfg, attr, int(raw))
+                except ValueError:
+                    pass
+        cfilter = os.environ.get("SENTINEL_CAPTURE_FILTER")
+        if cfilter is not None:
+            cfg.capture_filter = cfilter
         return cfg

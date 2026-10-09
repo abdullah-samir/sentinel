@@ -129,7 +129,7 @@ def run_workflow(
 
     # 5. build run state
     run = RunResult(
-        run_id=make_run_id(workflow),
+        run_id=make_run_id(workflow, norm_target),
         workflow=workflow,
         target=norm_target,
         started_at=utcnow_iso(),

@@ -24,6 +24,8 @@ class Manifest:
     depends_on: List[str] = field(default_factory=list)      # capabilities needed first
     offensive: bool = False                           # gated behind authorized-lab
     enabled: bool = True
+    phase: str = ""                                   # build-phase label, e.g. "1"
+    display: str = ""                                 # human-friendly name for listings
 
 
 class Module(ABC):
