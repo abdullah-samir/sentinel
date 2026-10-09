@@ -1,0 +1,73 @@
+# Sentinel report — {{ run.workflow | mdsan }}
+
+**Overall grade: {{ overall.grade }}** (risk score {{ overall.score }})
+
+| Field | Value |
+|---|---|
+| Run ID | `{{ run.run_id | mdsan }}` |
+| Target | `{{ run.target | mdsan or "—" }}` |
+| Workflow | {{ run.workflow | mdsan or "—" }} |
+| Started | {{ run.started_at | mdsan or "—" }} |
+| Finished | {{ run.finished_at | mdsan or "—" }} |
+| Duration | {{ run.duration }} |
+| Hosts up | {{ stats.hosts_up }} |
+| Assets | {{ stats.assets_total }} |
+| Findings | {{ stats.findings_total }} |
+
+Severity: {% for b in badges %}{{ b.sev }} {{ b.count }}{% if not loop.last %} · {% endif %}{% endfor %}
+
+{% if empty.all_skipped %}
+> **All modules were skipped — nothing was assessed in this run.**
+{% elif empty.no_hosts_up %}
+> No hosts reported up for the scanned target.
+{% endif %}
+
+## Findings by host
+
+{% for h in hosts %}
+### {{ h.target | mdsan }} — grade {{ h.grade }} (score {{ h.score }})
+{% if h.has_asset %}
+- alive: {{ "yes" if h.alive else "no" }}
+- open ports: {{ h.open_ports | join(', ') if h.open_ports else "none" }}
+{% if h.os_guess %}- OS guess: {{ h.os_guess | mdsan }}{% endif %}
+{% if h.hostname %}- hostname: {{ h.hostname | mdsan }}{% endif %}
+{% endif %}
+
+{% for f in h.findings %}
+- **[{{ f.severity }}]** {{ f.title | mdsan }}{% if f.detail %} — {{ f.detail | mdsan }}{% endif %}
+  - evidence: `{{ f.evidence | mdsan }}`
+{% if f.remediation %}  - fix: {{ f.remediation.fix | mdsan }} _{{ f.remediation.risk | mdsan }}_
+{% endif %}
+{% else %}
+- _No findings for this host._
+{% endfor %}
+{% else %}
+_No hosts to report._
+{% endfor %}
+
+## All findings
+
+{% if all_findings %}
+| Severity | Host | Title | Module | Evidence |
+|---|---|---|---|---|
+{% for f in all_findings %}| {{ f.severity }} | `{{ f.host | mdsan }}` | {{ f.title | mdsan }} | `{{ f.module | mdsan }}` | `{{ f.evidence | mdsan }}` |
+{% endfor %}
+{% else %}
+_No findings were recorded in this run._
+{% endif %}
+
+## Asset inventory
+
+{% if inventory %}
+| IP | Alive | Open ports | OS guess | Grade |
+|---|---|---|---|---|
+{% for a in inventory %}| `{{ a.ip | mdsan }}` | {{ "yes" if a.alive else "no" }} | {{ a.open_ports | join(', ') if a.open_ports else "—" }} | {{ a.os_guess | mdsan or "—" }} | {{ a.grade }} |
+{% endfor %}
+{% else %}
+_No hosts were found up in this run._
+{% endif %}
+
+---
+Generated {{ generated_at }} · Sentinel v{{ version }}
+
+{{ formula }}

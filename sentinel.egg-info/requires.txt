@@ -1,0 +1,12 @@
+scapy
+python-nmap
+fastapi
+uvicorn[standard]
+jinja2
+weasyprint
+pandas
+numpy
+scikit-learn
+rich
+pyyaml
+python-dateutil

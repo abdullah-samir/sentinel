@@ -1,0 +1,102 @@
+{
+  "run_id": "20261009T154844_quick_recon_ba6c09",
+  "workflow": "quick_recon",
+  "target": "10.10.1.1/32",
+  "started_at": "2026-10-09T15:48:44Z",
+  "schema_version": 1,
+  "finished_at": "2026-10-09T15:49:01Z",
+  "findings": [
+    {
+      "finding_id": "f-0001",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.1",
+      "title": "ssh (22/tcp) open",
+      "detail": "Service present",
+      "evidence": "22/tcp ssh Dropbear sshd 2012.55 protocol 2.0",
+      "timestamp": "2026-10-09T15:49:01Z",
+      "tags": [
+        "network",
+        "open_service",
+        "ssh"
+      ]
+    },
+    {
+      "finding_id": "f-0002",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.1",
+      "title": "domain (53/tcp) open",
+      "detail": "Service present",
+      "evidence": "53/tcp domain generic dns response: NOTIMP",
+      "timestamp": "2026-10-09T15:49:01Z",
+      "tags": [
+        "network",
+        "open_service",
+        "domain"
+      ]
+    },
+    {
+      "finding_id": "f-0003",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "low",
+      "target": "10.10.1.1",
+      "title": "http (80/tcp) open",
+      "detail": "Plaintext HTTP (no TLS)",
+      "evidence": "80/tcp http TP-LINK WAP http config",
+      "timestamp": "2026-10-09T15:49:01Z",
+      "tags": [
+        "network",
+        "open_service",
+        "http"
+      ]
+    },
+    {
+      "finding_id": "f-0004",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.1",
+      "title": "upnp (1900/tcp) open",
+      "detail": "Open service",
+      "evidence": "1900/tcp upnp Portable SDK for UPnP devices 1.6.19 Linux 2.6.36; UPnP 1.0",
+      "timestamp": "2026-10-09T15:49:01Z",
+      "tags": [
+        "network",
+        "open_service",
+        "upnp"
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "ip": "10.10.1.1",
+      "alive": true,
+      "mac": "",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [
+        22,
+        53,
+        80,
+        1900
+      ],
+      "os_guess": ""
+    }
+  ],
+  "stats": {
+    "hosts_up": 1,
+    "assets_total": 1,
+    "findings_total": 4,
+    "findings_by_severity": {
+      "info": 3,
+      "low": 1,
+      "medium": 0,
+      "high": 0,
+      "critical": 0
+    }
+  }
+}

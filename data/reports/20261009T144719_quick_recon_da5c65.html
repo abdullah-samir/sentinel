@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel report — quick_recon — 20261009T144719_quick_recon_da5c65</title>
+<script>document.documentElement.classList.add('js')</script>
+<style>
+  :root{
+    --bg:#0E1420; --panel:#151D2C; --border:#24324A; --ink:#EAF0F8; --muted:#8B98AB;
+    --teal:#2DD4BF; --orange:#F5953E; --red:#E5484D;
+    --sans:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --mono:ui-monospace, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:15px}
+  a{color:var(--teal)}
+  .wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}
+  header.top{display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border);
+       padding-bottom:16px;margin-bottom:16px}
+  header.top img{width:44px;height:44px}
+  header.top .t{font-size:20px;font-weight:700;letter-spacing:.3px}
+  header.top .sub{color:var(--muted);font-size:13px}
+  header.top .rid{margin-left:auto;font-family:var(--mono);color:var(--muted);font-size:12px;
+       text-align:right;word-break:break-all;max-width:40%}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px}
+  .diff{background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--teal);
+       border-radius:8px;padding:10px 14px;margin:0 0 16px;font-size:14px}
+  .diff.changed{border-left-color:var(--orange)}
+  .diff .muted{margin-left:4px}
+  .hero{display:grid;grid-template-columns:auto 1fr auto;gap:22px;align-items:center;margin-bottom:18px}
+  .grade{font-size:72px;font-weight:800;line-height:1;text-align:center;min-width:96px}
+  .grade .lbl{display:block;font-size:12px;font-weight:600;color:var(--muted);
+       letter-spacing:.14em;text-transform:uppercase;margin-top:6px}
+  .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 22px;font-size:14px}
+  .meta .k{color:var(--muted);margin-right:6px}
+  .meta .v{font-family:var(--mono);word-break:break-all}
+  .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .kpi{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 12px;min-width:92px}
+  .kpi .n{font-size:20px;font-weight:700}
+  .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .badge{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+       border-radius:999px;padding:4px 11px;font-size:13px;background:var(--bg)}
+  .dot{width:10px;height:10px;border-radius:50%}
+  .heat{margin:18px 0 6px}
+  .heat h2,.sec h2{font-size:13px;color:var(--muted);text-transform:uppercase;
+       letter-spacing:.1em;margin:0 0 8px}
+  /* --- interactive controls (hidden unless JS is on) --- */
+  .controls{display:none;gap:12px;align-items:center;flex-wrap:wrap;margin:18px 0}
+  html.js .controls{display:flex}
+  .controls input[type=search]{background:var(--bg);border:1px solid var(--border);color:var(--ink);
+       border-radius:8px;padding:9px 11px;min-width:220px;font:inherit;flex:1}
+  .sev-filter{display:flex;gap:8px;flex-wrap:wrap}
+  .sev-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);
+       border-radius:999px;padding:5px 11px;font-size:13px;background:var(--bg);cursor:pointer;text-transform:capitalize}
+  .sev-chip input{accent-color:var(--teal);margin:0}
+  .tool-actions{display:flex;gap:8px}
+  .tool-actions button{background:var(--bg);border:1px solid var(--border);color:var(--ink);
+       border-radius:8px;padding:8px 11px;font:inherit;cursor:pointer}
+  .tool-actions button:hover{border-color:var(--teal)}
+  #f-count{font-size:13px}
+  .sec{margin-top:26px}
+  .banner{border:1px solid var(--border);border-left:4px solid var(--teal);background:var(--panel);
+       border-radius:8px;padding:12px 14px;margin:14px 0}
+  .banner.warn{border-left-color:var(--orange)}
+  .host{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+  .host .hh{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  .host .ip{font-family:var(--mono);font-size:16px;font-weight:700}
+  .gbadge{font-weight:800;border-radius:8px;padding:2px 10px;color:#0E1420;font-size:15px}
+  .collapse-btn{display:none;margin-left:auto;background:var(--bg);border:1px solid var(--border);
+       color:var(--ink);width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:16px;line-height:1}
+  html.js .collapse-btn{display:inline-block}
+  .host.collapsed .host-body{display:none}
+  .host .facts{color:var(--muted);font-size:13px;display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 10px}
+  .host .facts code{font-family:var(--mono);color:var(--ink)}
+  .finding{display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--border)}
+  .chip{flex:none;align-self:flex-start;color:#0E1420;font-weight:700;font-size:11px;
+       text-transform:uppercase;letter-spacing:.05em;border-radius:6px;padding:3px 8px;min-width:62px;text-align:center}
+  .f-title{font-weight:600}
+  .f-detail{color:var(--muted);font-size:13px;margin-top:2px}
+  pre.f-ev{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border);
+       border-radius:7px;padding:7px 9px;margin:7px 0 0;white-space:pre-wrap;word-break:break-word;color:var(--ink)}
+  .remediation{margin-top:7px;font-size:13px;background:var(--bg);border:1px dashed var(--border);
+       border-radius:7px;padding:8px 10px}
+  .remediation .risk{display:block;color:var(--muted);margin-top:3px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.08em}
+  td.mono,.mono{font-family:var(--mono);word-break:break-word}
+  td .chip{display:inline-block}
+  html.js table.sortable th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+  html.js table.sortable th.sortable[data-dir=asc]::after{content:" ▲";color:var(--teal)}
+  html.js table.sortable th.sortable[data-dir=desc]::after{content:" ▼";color:var(--teal)}
+  .muted{color:var(--muted)}
+  .filtered{display:none !important}
+  footer{margin-top:34px;border-top:1px solid var(--border);padding-top:14px;color:var(--muted);font-size:12px}
+  footer .formula{font-family:var(--mono);margin-top:6px;color:var(--ink);opacity:.85}
+  @media (max-width:720px){.hero{grid-template-columns:1fr}.meta{grid-template-columns:1fr}
+       header.top .rid{max-width:100%;text-align:left}}
+  @media print{
+    @page{margin:14mm}
+    body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .controls,.collapse-btn{display:none !important}
+    .host-body{display:block !important}       /* expand collapsed cards for print */
+    .host,.panel{break-inside:avoid;page-break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHBhdGggZD0iTTI0IDNsMTcgNnYxMWMwIDExLTcgMTktMTcgMjJDMTQgMzkgNyAzMSA3IDIwVjlsMTctNnoiIGZpbGw9IiMxNTFEMkMiIHN0cm9rZT0iIzJERDRCRiIgc3Ryb2tlLXdpZHRoPSIyLjUiLz48dGV4dCB4PSIyNCIgeT0iMzEiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI3MDAiIGZvbnQtZmFtaWx5PSJ1aS1zYW5zLXNlcmlmLCBzeXN0ZW0tdWkiIGZpbGw9IiMyREQ0QkYiPlM8L3RleHQ+PC9zdmc+" alt="Sentinel logo">
+    <div>
+      <div class="t">Sentinel</div>
+      <div class="sub">Network-security assessment report</div>
+    </div>
+    <div class="rid">20261009T144719_quick_recon_da5c65</div>
+  </header>
+
+  <div class="diff changed">
+    <strong>9</strong> new · <strong>0</strong> resolved ·
+    grade A → B    <span class="muted">vs previous quick_recon run of 10.10.1.0/24</span>
+  </div>
+
+  <!-- Hero -->
+  <div class="panel hero">
+    <div class="grade" data-grade="B" style="color:#A3D977">
+      B<span class="lbl">overall</span>
+    </div>
+    <div>
+      <div class="meta">
+        <div><span class="k">Target</span><span class="v">10.10.1.0/24</span></div>
+        <div><span class="k">Workflow</span><span class="v">quick_recon</span></div>
+        <div><span class="k">Started</span><span class="v">2026-10-09T14:47:19Z</span></div>
+        <div><span class="k">Finished</span><span class="v">2026-10-09T15:02:06Z</span></div>
+        <div><span class="k">Duration</span><span class="v">14m 47s</span></div>
+        <div><span class="k">Risk score</span><span class="v">1</span></div>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><div class="n">20</div><div class="l">Hosts up</div></div>
+        <div class="kpi"><div class="n">20</div><div class="l">Assets</div></div>
+        <div class="kpi"><div class="n">9</div><div class="l">Findings</div></div>
+      </div>
+      <div class="badges">
+        <span class="badge"><span class="dot" style="background:#E5484D"></span>critical 0</span>
+        <span class="badge"><span class="dot" style="background:#F5953E"></span>high 0</span>
+        <span class="badge"><span class="dot" style="background:#E0B341"></span>medium 0</span>
+        <span class="badge"><span class="dot" style="background:#2DD4BF"></span>low 1</span>
+        <span class="badge"><span class="dot" style="background:#8B98AB"></span>info 8</span>
+      </div>
+    </div>
+    <div><svg viewBox="0 0 180 180" width="180" height="180" role="img" aria-label="Findings by severity"><circle cx="90" cy="90" r="66" fill="none" stroke="#24324A" stroke-width="26"/><g transform="rotate(-90 90 90)"><circle cx="90" cy="90" r="66" fill="none" stroke="#2DD4BF" stroke-width="26" stroke-dasharray="46.077 414.690" stroke-dashoffset="-0.000"><title>low: 1</title></circle><circle cx="90" cy="90" r="66" fill="none" stroke="#8B98AB" stroke-width="26" stroke-dasharray="368.614 414.690" stroke-dashoffset="-46.077"><title>info: 8</title></circle></g><text x="90" y="88" text-anchor="middle" font-size="34" font-weight="700" fill="#EAF0F8" font-family="ui-sans-serif, system-ui">9</text><text x="90" y="110" text-anchor="middle" font-size="13" fill="#8B98AB" font-family="ui-sans-serif, system-ui">findings</text></svg></div>
+  </div>
+
+  <!-- Per-host risk heat strip -->
+  <div class="heat">
+    <h2>Per-host risk</h2>
+    <svg viewBox="0 0 600 40" width="100%" height="40" role="img" aria-label="Per-host risk heat strip"><g><rect x="0.00" y="0" width="28.10" height="40" fill="#A3D977" rx="2"><title>10.10.1.1 — grade B (score 1)</title></rect><text x="14.05" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">B</text></g><g><rect x="30.10" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.2 — grade A (score 0)</title></rect><text x="44.15" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="60.20" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.20 — grade A (score 0)</title></rect><text x="74.25" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="90.30" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.23 — grade A (score 0)</title></rect><text x="104.35" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="120.40" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.50 — grade A (score 0)</title></rect><text x="134.45" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="150.50" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.51 — grade A (score 0)</title></rect><text x="164.55" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="180.60" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.52 — grade A (score 0)</title></rect><text x="194.65" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="210.70" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.53 — grade A (score 0)</title></rect><text x="224.75" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="240.80" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.54 — grade A (score 0)</title></rect><text x="254.85" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="270.90" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.55 — grade A (score 0)</title></rect><text x="284.95" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="301.00" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.56 — grade A (score 0)</title></rect><text x="315.05" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="331.10" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.57 — grade A (score 0)</title></rect><text x="345.15" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="361.20" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.58 — grade A (score 0)</title></rect><text x="375.25" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="391.30" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.59 — grade A (score 0)</title></rect><text x="405.35" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="421.40" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.60 — grade A (score 0)</title></rect><text x="435.45" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="451.50" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.61 — grade A (score 0)</title></rect><text x="465.55" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="481.60" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.63 — grade A (score 0)</title></rect><text x="495.65" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="511.70" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.70 — grade A (score 0)</title></rect><text x="525.75" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="541.80" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.90 — grade A (score 0)</title></rect><text x="555.85" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g><g><rect x="571.90" y="0" width="28.10" height="40" fill="#2DD4BF" rx="2"><title>10.10.1.99 — grade A (score 0)</title></rect><text x="585.95" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">A</text></g></svg>
+  </div>
+
+  <!-- Interactive controls (progressive enhancement; hidden if JS off / in print) -->
+  <div class="controls">
+    <input id="f-search" type="search" placeholder="Search hosts &amp; findings…" aria-label="Search hosts and findings">
+    <div class="sev-filter">
+      <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="critical" checked>
+        <span class="dot" style="background:#E5484D"></span>critical</label>
+      <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="high" checked>
+        <span class="dot" style="background:#F5953E"></span>high</label>
+      <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="medium" checked>
+        <span class="dot" style="background:#E0B341"></span>medium</label>
+      <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="low" checked>
+        <span class="dot" style="background:#2DD4BF"></span>low</label>
+      <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="info" checked>
+        <span class="dot" style="background:#8B98AB"></span>info</label>
+    </div>
+    <div class="tool-actions">
+      <button type="button" id="expand-all">Expand all</button>
+      <button type="button" id="collapse-all">Collapse all</button>
+    </div>
+    <span id="f-count" class="muted"></span>
+  </div>
+
+
+  <!-- Findings grouped by host -->
+  <div class="sec">
+    <h2>Findings by host</h2>
+    <section class="host" data-host="10.10.1.1">
+      <div class="hh">
+        <span class="ip">10.10.1.1</span>
+        <span class="gbadge" style="background:#A3D977">B</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>22, 53, 80, 1900</code></span>
+          <span>risk score: <code>1</code></span>
+        </div>
+        <div class="finding" data-fid="f-0003" data-sev="low">
+          <span class="chip" style="background:#2DD4BF">low</span>
+          <div class="f-body">
+            <div class="f-title">http (80/tcp) open</div>
+<div class="f-detail">Plaintext HTTP (no TLS)</div><pre class="f-ev">80/tcp http TP-LINK WAP http config</pre>            <div class="remediation"><strong>Fix:</strong> Serve over HTTPS/TLS and redirect HTTP to HTTPS.
+              <span class="risk">Plaintext HTTP can be read or tampered with in transit.</span></div>
+          </div>
+        </div>
+        <div class="finding" data-fid="f-0001" data-sev="info">
+          <span class="chip" style="background:#8B98AB">info</span>
+          <div class="f-body">
+            <div class="f-title">ssh (22/tcp) open</div>
+<div class="f-detail">Service present</div><pre class="f-ev">22/tcp ssh Dropbear sshd 2012.55 protocol 2.0</pre>          </div>
+        </div>
+        <div class="finding" data-fid="f-0002" data-sev="info">
+          <span class="chip" style="background:#8B98AB">info</span>
+          <div class="f-body">
+            <div class="f-title">domain (53/tcp) open</div>
+<div class="f-detail">Service present</div><pre class="f-ev">53/tcp domain generic dns response: NOTIMP</pre>          </div>
+        </div>
+        <div class="finding" data-fid="f-0004" data-sev="info">
+          <span class="chip" style="background:#8B98AB">info</span>
+          <div class="f-body">
+            <div class="f-title">upnp (1900/tcp) open</div>
+<div class="f-detail">Open service</div><pre class="f-ev">1900/tcp upnp Portable SDK for UPnP devices 1.6.19 Linux 2.6.36; UPnP 1.0</pre>            <div class="remediation"><strong>Fix:</strong> Disable UPnP at the network edge; restrict to the trusted LAN.
+              <span class="risk">UPnP can auto-expose internal services without authentication.</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.2">
+      <div class="hh">
+        <span class="ip">10.10.1.2</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>22, 53, 111</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="finding" data-fid="f-0005" data-sev="info">
+          <span class="chip" style="background:#8B98AB">info</span>
+          <div class="f-body">
+            <div class="f-title">ssh (22/tcp) open</div>
+<div class="f-detail">Service present</div><pre class="f-ev">22/tcp ssh OpenSSH 10.3 protocol 2.0</pre>          </div>
+        </div>
+        <div class="finding" data-fid="f-0006" data-sev="info">
+          <span class="chip" style="background:#8B98AB">info</span>
+          <div class="f-body">
+            <div class="f-title">domain (53/tcp) open</div>
+<div class="f-detail">Service present</div><pre class="f-ev">53/tcp domain Unbound</pre>          </div>
+        </div>
+        <div class="finding" data-fid="f-0007" data-sev="info">
+          <span class="chip" style="background:#8B98AB">info</span>
+          <div class="f-body">
+            <div class="f-title">rpcbind (111/tcp) open</div>
+<div class="f-detail">Open service</div><pre class="f-ev">111/tcp rpcbind 2-4 RPC #100000</pre>            <div class="remediation"><strong>Fix:</strong> Firewall port 111 and disable rpcbind if it is unused.
+              <span class="risk">rpcbind enumerates RPC services and aids DDoS amplification.</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.20">
+      <div class="hh">
+        <span class="ip">10.10.1.20</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>62078</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="finding" data-fid="f-0008" data-sev="info">
+          <span class="chip" style="background:#8B98AB">info</span>
+          <div class="f-body">
+            <div class="f-title">tcpwrapped (62078/tcp) open</div>
+<div class="f-detail">Open service</div><pre class="f-ev">62078/tcp tcpwrapped</pre>          </div>
+        </div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.23">
+      <div class="hh">
+        <span class="ip">10.10.1.23</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.50">
+      <div class="hh">
+        <span class="ip">10.10.1.50</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.51">
+      <div class="hh">
+        <span class="ip">10.10.1.51</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.52">
+      <div class="hh">
+        <span class="ip">10.10.1.52</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.53">
+      <div class="hh">
+        <span class="ip">10.10.1.53</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.54">
+      <div class="hh">
+        <span class="ip">10.10.1.54</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.55">
+      <div class="hh">
+        <span class="ip">10.10.1.55</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.56">
+      <div class="hh">
+        <span class="ip">10.10.1.56</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.57">
+      <div class="hh">
+        <span class="ip">10.10.1.57</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.58">
+      <div class="hh">
+        <span class="ip">10.10.1.58</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.59">
+      <div class="hh">
+        <span class="ip">10.10.1.59</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.60">
+      <div class="hh">
+        <span class="ip">10.10.1.60</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.61">
+      <div class="hh">
+        <span class="ip">10.10.1.61</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.63">
+      <div class="hh">
+        <span class="ip">10.10.1.63</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.70">
+      <div class="hh">
+        <span class="ip">10.10.1.70</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.90">
+      <div class="hh">
+        <span class="ip">10.10.1.90</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>none</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="muted">No findings for this host.</div>
+      </div>
+    </section>
+    <section class="host" data-host="10.10.1.99">
+      <div class="hh">
+        <span class="ip">10.10.1.99</span>
+        <span class="gbadge" style="background:#2DD4BF">A</span>
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          <span>alive: <code>yes</code></span>
+          <span>open ports: <code>22</code></span>
+          <span>risk score: <code>0</code></span>
+        </div>
+        <div class="finding" data-fid="f-0009" data-sev="info">
+          <span class="chip" style="background:#8B98AB">info</span>
+          <div class="f-body">
+            <div class="f-title">ssh (22/tcp) open</div>
+<div class="f-detail">Service present</div><pre class="f-ev">22/tcp ssh OpenSSH 10.0p2 Debian 7+deb13u4 protocol 2.0</pre>          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- All findings -->
+  <div class="sec">
+    <h2>All findings</h2>
+    <table class="sortable">
+      <thead><tr>
+        <th class="sortable" data-type="rank">Severity</th>
+        <th class="sortable" data-type="text">Host</th>
+        <th class="sortable" data-type="text">Title</th>
+        <th class="sortable" data-type="text">Module</th>
+        <th>Evidence</th>
+      </tr></thead>
+      <tbody>
+        <tr class="frow" data-fid="f-0003" data-sev="low">
+          <td data-rank="1"><span class="chip" style="background:#2DD4BF">low</span></td>
+          <td class="mono">10.10.1.1</td>
+          <td>http (80/tcp) open</td>
+          <td class="mono">red.recon_nmap</td>
+          <td class="mono">80/tcp http TP-LINK WAP http config</td>
+        </tr>
+        <tr class="frow" data-fid="f-0001" data-sev="info">
+          <td data-rank="0"><span class="chip" style="background:#8B98AB">info</span></td>
+          <td class="mono">10.10.1.1</td>
+          <td>ssh (22/tcp) open</td>
+          <td class="mono">red.recon_nmap</td>
+          <td class="mono">22/tcp ssh Dropbear sshd 2012.55 protocol 2.0</td>
+        </tr>
+        <tr class="frow" data-fid="f-0002" data-sev="info">
+          <td data-rank="0"><span class="chip" style="background:#8B98AB">info</span></td>
+          <td class="mono">10.10.1.1</td>
+          <td>domain (53/tcp) open</td>
+          <td class="mono">red.recon_nmap</td>
+          <td class="mono">53/tcp domain generic dns response: NOTIMP</td>
+        </tr>
+        <tr class="frow" data-fid="f-0004" data-sev="info">
+          <td data-rank="0"><span class="chip" style="background:#8B98AB">info</span></td>
+          <td class="mono">10.10.1.1</td>
+          <td>upnp (1900/tcp) open</td>
+          <td class="mono">red.recon_nmap</td>
+          <td class="mono">1900/tcp upnp Portable SDK for UPnP devices 1.6.19 Linux 2.6.36; UPnP 1.0</td>
+        </tr>
+        <tr class="frow" data-fid="f-0005" data-sev="info">
+          <td data-rank="0"><span class="chip" style="background:#8B98AB">info</span></td>
+          <td class="mono">10.10.1.2</td>
+          <td>ssh (22/tcp) open</td>
+          <td class="mono">red.recon_nmap</td>
+          <td class="mono">22/tcp ssh OpenSSH 10.3 protocol 2.0</td>
+        </tr>
+        <tr class="frow" data-fid="f-0006" data-sev="info">
+          <td data-rank="0"><span class="chip" style="background:#8B98AB">info</span></td>
+          <td class="mono">10.10.1.2</td>
+          <td>domain (53/tcp) open</td>
+          <td class="mono">red.recon_nmap</td>
+          <td class="mono">53/tcp domain Unbound</td>
+        </tr>
+        <tr class="frow" data-fid="f-0007" data-sev="info">
+          <td data-rank="0"><span class="chip" style="background:#8B98AB">info</span></td>
+          <td class="mono">10.10.1.2</td>
+          <td>rpcbind (111/tcp) open</td>
+          <td class="mono">red.recon_nmap</td>
+          <td class="mono">111/tcp rpcbind 2-4 RPC #100000</td>
+        </tr>
+        <tr class="frow" data-fid="f-0008" data-sev="info">
+          <td data-rank="0"><span class="chip" style="background:#8B98AB">info</span></td>
+          <td class="mono">10.10.1.20</td>
+          <td>tcpwrapped (62078/tcp) open</td>
+          <td class="mono">red.recon_nmap</td>
+          <td class="mono">62078/tcp tcpwrapped</td>
+        </tr>
+        <tr class="frow" data-fid="f-0009" data-sev="info">
+          <td data-rank="0"><span class="chip" style="background:#8B98AB">info</span></td>
+          <td class="mono">10.10.1.99</td>
+          <td>ssh (22/tcp) open</td>
+          <td class="mono">red.recon_nmap</td>
+          <td class="mono">22/tcp ssh OpenSSH 10.0p2 Debian 7+deb13u4 protocol 2.0</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Asset inventory -->
+  <div class="sec">
+    <h2>Asset inventory</h2>
+    <table class="sortable">
+      <thead><tr>
+        <th class="sortable" data-type="text">IP</th>
+        <th class="sortable" data-type="text">Alive</th>
+        <th class="sortable" data-type="num">Open ports</th>
+        <th class="sortable" data-type="text">OS guess</th>
+        <th class="sortable" data-type="rank">Grade</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="mono">10.10.1.1</td>
+          <td>yes</td>
+          <td class="mono" data-num="4">22, 53, 80, 1900</td>
+          <td class="mono">—</td>
+          <td data-rank="1"><span class="gbadge" style="background:#A3D977">B</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.2</td>
+          <td>yes</td>
+          <td class="mono" data-num="3">22, 53, 111</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.20</td>
+          <td>yes</td>
+          <td class="mono" data-num="1">62078</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.23</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.50</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.51</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.52</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.53</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.54</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.55</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.56</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.57</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.58</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.59</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.60</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.61</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.63</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.70</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.90</td>
+          <td>yes</td>
+          <td class="mono" data-num="0">—</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+        <tr>
+          <td class="mono">10.10.1.99</td>
+          <td>yes</td>
+          <td class="mono" data-num="1">22</td>
+          <td class="mono">—</td>
+          <td data-rank="0"><span class="gbadge" style="background:#2DD4BF">A</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <div>Generated 2026-10-09T17:46:33Z · Sentinel v0.1.0</div>
+    <div class="formula">Risk score = sum of finding weights (info=0, low=1, medium=4, high=8, critical=16). Grade by score: A=0, B=1-3, C=4-7, D=8-15, F&gt;=16. A host&#39;s score sums its own findings; the overall score sums every finding.</div>
+  </footer>
+
+</div>
+
+<script type="application/json" id="sentinel-data">{"run_id": "20261009T144719_quick_recon_da5c65", "findings": [{"id": "f-0003", "sev": "low", "rank": 1, "type": "open_service", "host": "10.10.1.1", "module": "red.recon_nmap", "title": "http (80/tcp) open", "detail": "Plaintext HTTP (no TLS)", "evidence": "80/tcp http TP-LINK WAP http config"}, {"id": "f-0001", "sev": "info", "rank": 0, "type": "open_service", "host": "10.10.1.1", "module": "red.recon_nmap", "title": "ssh (22/tcp) open", "detail": "Service present", "evidence": "22/tcp ssh Dropbear sshd 2012.55 protocol 2.0"}, {"id": "f-0002", "sev": "info", "rank": 0, "type": "open_service", "host": "10.10.1.1", "module": "red.recon_nmap", "title": "domain (53/tcp) open", "detail": "Service present", "evidence": "53/tcp domain generic dns response: NOTIMP"}, {"id": "f-0004", "sev": "info", "rank": 0, "type": "open_service", "host": "10.10.1.1", "module": "red.recon_nmap", "title": "upnp (1900/tcp) open", "detail": "Open service", "evidence": "1900/tcp upnp Portable SDK for UPnP devices 1.6.19 Linux 2.6.36; UPnP 1.0"}, {"id": "f-0005", "sev": "info", "rank": 0, "type": "open_service", "host": "10.10.1.2", "module": "red.recon_nmap", "title": "ssh (22/tcp) open", "detail": "Service present", "evidence": "22/tcp ssh OpenSSH 10.3 protocol 2.0"}, {"id": "f-0006", "sev": "info", "rank": 0, "type": "open_service", "host": "10.10.1.2", "module": "red.recon_nmap", "title": "domain (53/tcp) open", "detail": "Service present", "evidence": "53/tcp domain Unbound"}, {"id": "f-0007", "sev": "info", "rank": 0, "type": "open_service", "host": "10.10.1.2", "module": "red.recon_nmap", "title": "rpcbind (111/tcp) open", "detail": "Open service", "evidence": "111/tcp rpcbind 2-4 RPC #100000"}, {"id": "f-0008", "sev": "info", "rank": 0, "type": "open_service", "host": "10.10.1.20", "module": "red.recon_nmap", "title": "tcpwrapped (62078/tcp) open", "detail": "Open service", "evidence": "62078/tcp tcpwrapped"}, {"id": "f-0009", "sev": "info", "rank": 0, "type": "open_service", "host": "10.10.1.99", "module": "red.recon_nmap", "title": "ssh (22/tcp) open", "detail": "Service present", "evidence": "22/tcp ssh OpenSSH 10.0p2 Debian 7+deb13u4 protocol 2.0"}]}</script>
+<script>
+(function(){
+  "use strict";
+  function each(sel, fn, root){ Array.prototype.forEach.call((root||document).querySelectorAll(sel), fn); }
+  var DATA = {findings: []};
+  try { DATA = JSON.parse(document.getElementById("sentinel-data").textContent); } catch (e) {}
+  var byId = {};
+  DATA.findings.forEach(function(f){
+    f._s = ((f.host||"")+" "+(f.module||"")+" "+(f.title||"")+" "+(f.detail||"")+" "+(f.evidence||"")+" "+(f.sev||"")).toLowerCase();
+    byId[f.id] = f;
+  });
+
+  var search = document.getElementById("f-search");
+  var counter = document.getElementById("f-count");
+  var sevBoxes = Array.prototype.slice.call(document.querySelectorAll(".sev-toggle"));
+
+  function apply(){
+    var q = (search && search.value || "").trim().toLowerCase();
+    var active = {};
+    sevBoxes.forEach(function(b){ active[b.getAttribute("data-sev")] = b.checked; });
+    each("[data-fid]", function(el){
+      var f = byId[el.getAttribute("data-fid")];
+      var txt = f ? f._s : (el.textContent||"").toLowerCase();
+      var vis = (active[el.getAttribute("data-sev")] !== false) && (!q || txt.indexOf(q) !== -1);
+      el.classList.toggle("filtered", !vis);
+    });
+    var shownHosts = 0;
+    each(".host", function(card){
+      var fin = card.querySelectorAll(".finding"), vis;
+      if (fin.length === 0){
+        vis = !q || (card.getAttribute("data-host")||"").toLowerCase().indexOf(q) !== -1;
+      } else {
+        vis = false;
+        for (var i=0;i<fin.length;i++){ if(!fin[i].classList.contains("filtered")){ vis=true; break; } }
+      }
+      card.classList.toggle("filtered", !vis);
+      if (vis) shownHosts++;
+    });
+    if (counter){
+      var vf = document.querySelectorAll(".finding:not(.filtered)").length;
+      counter.textContent = vf + " findings · " + shownHosts + " hosts";
+    }
+  }
+
+  if (search) search.addEventListener("input", apply);
+  sevBoxes.forEach(function(b){ b.addEventListener("change", apply); });
+
+  each(".collapse-btn", function(btn){
+    btn.addEventListener("click", function(){
+      var h = btn.closest(".host"), c = h.classList.toggle("collapsed");
+      btn.textContent = c ? "+" : "–";
+      btn.setAttribute("aria-expanded", c ? "false" : "true");
+    });
+  });
+  function setAll(coll){
+    each(".host", function(h){
+      h.classList.toggle("collapsed", coll);
+      var b = h.querySelector(".collapse-btn");
+      if (b){ b.textContent = coll ? "+" : "–"; b.setAttribute("aria-expanded", coll ? "false":"true"); }
+    });
+  }
+  var ea = document.getElementById("expand-all"), ca = document.getElementById("collapse-all");
+  if (ea) ea.addEventListener("click", function(){ setAll(false); });
+  if (ca) ca.addEventListener("click", function(){ setAll(true); });
+
+  function keyOf(cell, type){
+    if (!cell) return "";
+    if (type === "rank") return parseInt(cell.getAttribute("data-rank")||"0", 10);
+    if (type === "num")  return parseFloat(cell.getAttribute("data-num")||cell.textContent) || 0;
+    return (cell.textContent||"").trim().toLowerCase();
+  }
+  each("table.sortable th.sortable", function(th){
+    th.addEventListener("click", function(){
+      var table = th.closest("table"), tb = table.tBodies[0];
+      var idx = Array.prototype.indexOf.call(th.parentNode.children, th);
+      var type = th.getAttribute("data-type") || "text";
+      var dir = th.getAttribute("data-dir") === "asc" ? "desc" : "asc";
+      Array.prototype.forEach.call(th.parentNode.children, function(h){ if (h!==th) h.removeAttribute("data-dir"); });
+      th.setAttribute("data-dir", dir);
+      var rows = Array.prototype.slice.call(tb.rows);
+      rows.sort(function(a,b){
+        var x = keyOf(a.cells[idx], type), y = keyOf(b.cells[idx], type);
+        if (x < y) return dir === "asc" ? -1 : 1;
+        if (x > y) return dir === "asc" ? 1 : -1;
+        return 0;
+      });
+      rows.forEach(function(r){ tb.appendChild(r); });
+    });
+  });
+
+  apply();
+})();
+</script>
+</body>
+</html>

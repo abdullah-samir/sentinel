@@ -1,0 +1,57 @@
+{
+  "run_id": "20261007T143210_quick_recon_a1b2c3",
+  "workflow": "quick_recon",
+  "target": "192.168.1.0/24",
+  "started_at": "2026-10-07T14:32:10Z",
+  "schema_version": 1,
+  "finished_at": "2026-10-07T14:33:48Z",
+  "findings": [
+    {
+      "finding_id": "f-0001",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "high",
+      "target": "192.168.1.8",
+      "title": "Telnet (23/tcp) open",
+      "detail": "cleartext credentials",
+      "evidence": "nmap -sV -> 23/tcp open telnet",
+      "timestamp": "2026-10-07T14:33:02Z",
+      "tags": ["network", "cleartext"]
+    },
+    {
+      "finding_id": "f-0002",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "high",
+      "target": "192.168.1.8",
+      "title": "HTTP (80/tcp) open",
+      "detail": "admin panel reachable without TLS",
+      "evidence": "nmap -sV -> 80/tcp open http (lighttpd)",
+      "timestamp": "2026-10-07T14:33:03Z",
+      "tags": ["network", "web"]
+    }
+  ],
+  "assets": [
+    {
+      "ip": "192.168.1.8",
+      "alive": true,
+      "mac": "",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [23, 80],
+      "os_guess": "Linux"
+    }
+  ],
+  "stats": {
+    "hosts_up": 1,
+    "assets_total": 1,
+    "findings_total": 2,
+    "findings_by_severity": {
+      "info": 0,
+      "low": 0,
+      "medium": 0,
+      "high": 2,
+      "critical": 0
+    }
+  }
+}

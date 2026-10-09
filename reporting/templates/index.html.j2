@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel — run history</title>
+<style>
+  :root{
+    --bg:#0E1420; --panel:#151D2C; --border:#24324A; --ink:#EAF0F8; --muted:#8B98AB;
+    --teal:#2DD4BF; --sans:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --mono:ui-monospace, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:15px}
+  a{color:var(--teal)}
+  .wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}
+  header.top{display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border);
+       padding-bottom:16px;margin-bottom:18px}
+  header.top img{width:44px;height:44px}
+  header.top .t{font-size:20px;font-weight:700}
+  header.top .sub{color:var(--muted);font-size:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.08em}
+  td.mono,.mono{font-family:var(--mono);word-break:break-word}
+  .gbadge{font-weight:800;border-radius:7px;padding:2px 9px;color:#0E1420;font-size:13px}
+  .scount{font-family:var(--mono);font-weight:700;margin-right:6px}
+  .muted{color:var(--muted)}
+  footer{margin-top:28px;border-top:1px solid var(--border);padding-top:14px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <img src="{{ logo }}" alt="Sentinel logo">
+    <div>
+      <div class="t">Sentinel — run history</div>
+      <div class="sub">{{ count }} of {{ total }} run(s), newest first</div>
+    </div>
+  </header>
+
+  {% if rows %}
+  <table>
+    <thead><tr>
+      <th>Started</th><th>Run</th><th>Workflow</th><th>Target</th>
+      <th>Grade</th><th>Severity</th><th>Change vs previous</th>
+    </tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="mono">{{ r.started_at }}</td>
+        <td class="mono"><a href="{{ r.href }}">{{ r.run_id }}</a></td>
+        <td>{{ r.workflow }}</td>
+        <td class="mono">{{ r.target }}</td>
+        <td><span class="gbadge" style="background:{{ r.grade_color }}">{{ r.grade }}</span></td>
+        <td>
+          {% for s in badges_order %}{% if r.by_severity[s] %}<span class="scount"
+            style="color:{{ severity_color[s] }}">{{ s[0] | upper }}{{ r.by_severity[s] }}</span>{% endif %}{% endfor %}
+        </td>
+        <td>
+          {% if r.diff.has_previous %}
+            {{ r.diff.new }} new · {{ r.diff.resolved }} resolved{% if r.diff.grade_from != r.diff.grade_to %} · grade {{ r.diff.grade_from }}→{{ r.diff.grade_to }}{% endif %}
+          {% else %}
+            <span class="muted">baseline</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No runs recorded yet.</p>
+  {% endif %}
+
+  <footer>Generated {{ generated_at }} · Sentinel v{{ version }}</footer>
+</div>
+</body>
+</html>

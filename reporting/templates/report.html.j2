@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel report — {{ run.workflow }} — {{ run.run_id }}</title>
+<script>document.documentElement.classList.add('js')</script>
+<style>
+  :root{
+    --bg:#0E1420; --panel:#151D2C; --border:#24324A; --ink:#EAF0F8; --muted:#8B98AB;
+    --teal:#2DD4BF; --orange:#F5953E; --red:#E5484D;
+    --sans:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --mono:ui-monospace, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:15px}
+  a{color:var(--teal)}
+  .wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}
+  header.top{display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border);
+       padding-bottom:16px;margin-bottom:16px}
+  header.top img{width:44px;height:44px}
+  header.top .t{font-size:20px;font-weight:700;letter-spacing:.3px}
+  header.top .sub{color:var(--muted);font-size:13px}
+  header.top .rid{margin-left:auto;font-family:var(--mono);color:var(--muted);font-size:12px;
+       text-align:right;word-break:break-all;max-width:40%}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px}
+  .diff{background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--teal);
+       border-radius:8px;padding:10px 14px;margin:0 0 16px;font-size:14px}
+  .diff.changed{border-left-color:var(--orange)}
+  .diff .muted{margin-left:4px}
+  .hero{display:grid;grid-template-columns:auto 1fr auto;gap:22px;align-items:center;margin-bottom:18px}
+  .grade{font-size:72px;font-weight:800;line-height:1;text-align:center;min-width:96px}
+  .grade .lbl{display:block;font-size:12px;font-weight:600;color:var(--muted);
+       letter-spacing:.14em;text-transform:uppercase;margin-top:6px}
+  .meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 22px;font-size:14px}
+  .meta .k{color:var(--muted);margin-right:6px}
+  .meta .v{font-family:var(--mono);word-break:break-all}
+  .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .kpi{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 12px;min-width:92px}
+  .kpi .n{font-size:20px;font-weight:700}
+  .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .badge{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);
+       border-radius:999px;padding:4px 11px;font-size:13px;background:var(--bg)}
+  .dot{width:10px;height:10px;border-radius:50%}
+  .heat{margin:18px 0 6px}
+  .heat h2,.sec h2{font-size:13px;color:var(--muted);text-transform:uppercase;
+       letter-spacing:.1em;margin:0 0 8px}
+  /* --- interactive controls (hidden unless JS is on) --- */
+  .controls{display:none;gap:12px;align-items:center;flex-wrap:wrap;margin:18px 0}
+  html.js .controls{display:flex}
+  .controls input[type=search]{background:var(--bg);border:1px solid var(--border);color:var(--ink);
+       border-radius:8px;padding:9px 11px;min-width:220px;font:inherit;flex:1}
+  .sev-filter{display:flex;gap:8px;flex-wrap:wrap}
+  .sev-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);
+       border-radius:999px;padding:5px 11px;font-size:13px;background:var(--bg);cursor:pointer;text-transform:capitalize}
+  .sev-chip input{accent-color:var(--teal);margin:0}
+  .tool-actions{display:flex;gap:8px}
+  .tool-actions button{background:var(--bg);border:1px solid var(--border);color:var(--ink);
+       border-radius:8px;padding:8px 11px;font:inherit;cursor:pointer}
+  .tool-actions button:hover{border-color:var(--teal)}
+  #f-count{font-size:13px}
+  .sec{margin-top:26px}
+  .banner{border:1px solid var(--border);border-left:4px solid var(--teal);background:var(--panel);
+       border-radius:8px;padding:12px 14px;margin:14px 0}
+  .banner.warn{border-left-color:var(--orange)}
+  .host{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+  .host .hh{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  .host .ip{font-family:var(--mono);font-size:16px;font-weight:700}
+  .gbadge{font-weight:800;border-radius:8px;padding:2px 10px;color:#0E1420;font-size:15px}
+  .collapse-btn{display:none;margin-left:auto;background:var(--bg);border:1px solid var(--border);
+       color:var(--ink);width:28px;height:28px;border-radius:7px;cursor:pointer;font-size:16px;line-height:1}
+  html.js .collapse-btn{display:inline-block}
+  .host.collapsed .host-body{display:none}
+  .host .facts{color:var(--muted);font-size:13px;display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 10px}
+  .host .facts code{font-family:var(--mono);color:var(--ink)}
+  .finding{display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--border)}
+  .chip{flex:none;align-self:flex-start;color:#0E1420;font-weight:700;font-size:11px;
+       text-transform:uppercase;letter-spacing:.05em;border-radius:6px;padding:3px 8px;min-width:62px;text-align:center}
+  .f-title{font-weight:600}
+  .f-detail{color:var(--muted);font-size:13px;margin-top:2px}
+  pre.f-ev{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border);
+       border-radius:7px;padding:7px 9px;margin:7px 0 0;white-space:pre-wrap;word-break:break-word;color:var(--ink)}
+  .remediation{margin-top:7px;font-size:13px;background:var(--bg);border:1px dashed var(--border);
+       border-radius:7px;padding:8px 10px}
+  .remediation .risk{display:block;color:var(--muted);margin-top:3px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.08em}
+  td.mono,.mono{font-family:var(--mono);word-break:break-word}
+  td .chip{display:inline-block}
+  html.js table.sortable th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+  html.js table.sortable th.sortable[data-dir=asc]::after{content:" ▲";color:var(--teal)}
+  html.js table.sortable th.sortable[data-dir=desc]::after{content:" ▼";color:var(--teal)}
+  .muted{color:var(--muted)}
+  .filtered{display:none !important}
+  footer{margin-top:34px;border-top:1px solid var(--border);padding-top:14px;color:var(--muted);font-size:12px}
+  footer .formula{font-family:var(--mono);margin-top:6px;color:var(--ink);opacity:.85}
+  @media (max-width:720px){.hero{grid-template-columns:1fr}.meta{grid-template-columns:1fr}
+       header.top .rid{max-width:100%;text-align:left}}
+  @media print{
+    @page{margin:14mm}
+    body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .controls,.collapse-btn{display:none !important}
+    .host-body{display:block !important}       /* expand collapsed cards for print */
+    .host,.panel{break-inside:avoid;page-break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <img src="{{ logo }}" alt="Sentinel logo">
+    <div>
+      <div class="t">Sentinel</div>
+      <div class="sub">Network-security assessment report</div>
+    </div>
+    <div class="rid">{{ run.run_id }}</div>
+  </header>
+
+  {% if diff %}
+  <div class="diff {{ 'changed' if diff.grade_changed else '' }}">
+    {% if diff.has_previous %}
+    <strong>{{ diff.new }}</strong> new · <strong>{{ diff.resolved }}</strong> resolved ·
+    grade {{ diff.grade_from }}{% if diff.grade_from != diff.grade_to %} → {{ diff.grade_to }}{% else %} (unchanged){% endif %}
+    <span class="muted">vs previous {{ run.workflow }} run of {{ run.target }}</span>
+    {% else %}
+    Baseline — first {{ run.workflow }} run recorded for {{ run.target }}.
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Hero -->
+  <div class="panel hero">
+    <div class="grade" data-grade="{{ overall.grade }}" style="color:{{ overall.color }}">
+      {{ overall.grade }}<span class="lbl">overall</span>
+    </div>
+    <div>
+      <div class="meta">
+        <div><span class="k">Target</span><span class="v">{{ run.target or "—" }}</span></div>
+        <div><span class="k">Workflow</span><span class="v">{{ run.workflow or "—" }}</span></div>
+        <div><span class="k">Started</span><span class="v">{{ run.started_at or "—" }}</span></div>
+        <div><span class="k">Finished</span><span class="v">{{ run.finished_at or "—" }}</span></div>
+        <div><span class="k">Duration</span><span class="v">{{ run.duration }}</span></div>
+        <div><span class="k">Risk score</span><span class="v">{{ overall.score }}</span></div>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><div class="n">{{ stats.hosts_up }}</div><div class="l">Hosts up</div></div>
+        <div class="kpi"><div class="n">{{ stats.assets_total }}</div><div class="l">Assets</div></div>
+        <div class="kpi"><div class="n">{{ stats.findings_total }}</div><div class="l">Findings</div></div>
+      </div>
+      <div class="badges">
+        {% for b in badges %}
+        <span class="badge"><span class="dot" style="background:{{ b.color }}"></span>{{ b.sev }} {{ b.count }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    <div>{{ donut_svg | safe }}</div>
+  </div>
+
+  <!-- Per-host risk heat strip -->
+  <div class="heat">
+    <h2>Per-host risk</h2>
+    {{ heat_svg | safe }}
+  </div>
+
+  <!-- Interactive controls (progressive enhancement; hidden if JS off / in print) -->
+  <div class="controls">
+    <input id="f-search" type="search" placeholder="Search hosts &amp; findings…" aria-label="Search hosts and findings">
+    <div class="sev-filter">
+      {% for b in badges %}
+      <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="{{ b.sev }}" checked>
+        <span class="dot" style="background:{{ b.color }}"></span>{{ b.sev }}</label>
+      {% endfor %}
+    </div>
+    <div class="tool-actions">
+      <button type="button" id="expand-all">Expand all</button>
+      <button type="button" id="collapse-all">Collapse all</button>
+    </div>
+    <span id="f-count" class="muted"></span>
+  </div>
+
+  {% if empty.all_skipped %}
+  <div class="banner warn">All modules were skipped — nothing was assessed in this run.</div>
+  {% elif empty.no_hosts_up %}
+  <div class="banner">No hosts reported up for the scanned target.</div>
+  {% endif %}
+
+  <!-- Findings grouped by host -->
+  <div class="sec">
+    <h2>Findings by host</h2>
+    {% for h in hosts %}
+    <section class="host" data-host="{{ h.target }}">
+      <div class="hh">
+        <span class="ip">{{ h.target }}</span>
+        <span class="gbadge" style="background:{{ h.grade_color }}">{{ h.grade }}</span>
+        {% if not h.has_asset %}<span class="muted">scan-level</span>{% endif %}
+        <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
+      </div>
+      <div class="host-body">
+        <div class="facts">
+          {% if h.has_asset %}
+          <span>alive: <code>{{ "yes" if h.alive else "no" }}</code></span>
+          <span>open ports: <code>{{ h.open_ports | join(', ') if h.open_ports else "none" }}</code></span>
+          {% if h.os_guess %}<span>OS: <code>{{ h.os_guess }}</code></span>{% endif %}
+          {% if h.hostname %}<span>host: <code>{{ h.hostname }}</code></span>{% endif %}
+          {% if h.vendor %}<span>vendor: <code>{{ h.vendor }}</code></span>{% endif %}
+          {% endif %}
+          <span>risk score: <code>{{ h.score }}</code></span>
+        </div>
+        {% for f in h.findings %}
+        <div class="finding" data-fid="{{ f.finding_id }}" data-sev="{{ f.severity }}">
+          <span class="chip" style="background:{{ f.color }}">{{ f.severity }}</span>
+          <div class="f-body">
+            <div class="f-title">{{ f.title }}</div>
+            {% if f.detail %}<div class="f-detail">{{ f.detail }}</div>{% endif %}
+            {% if f.evidence %}<pre class="f-ev">{{ f.evidence }}</pre>{% endif %}
+            {% if f.remediation %}
+            <div class="remediation"><strong>Fix:</strong> {{ f.remediation.fix }}
+              <span class="risk">{{ f.remediation.risk }}</span></div>
+            {% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="muted">No findings for this host.</div>
+        {% endfor %}
+      </div>
+    </section>
+    {% else %}
+    <p class="muted">No hosts to report.</p>
+    {% endfor %}
+  </div>
+
+  <!-- All findings -->
+  <div class="sec">
+    <h2>All findings</h2>
+    {% if all_findings %}
+    <table class="sortable">
+      <thead><tr>
+        <th class="sortable" data-type="rank">Severity</th>
+        <th class="sortable" data-type="text">Host</th>
+        <th class="sortable" data-type="text">Title</th>
+        <th class="sortable" data-type="text">Module</th>
+        <th>Evidence</th>
+      </tr></thead>
+      <tbody>
+        {% for f in all_findings %}
+        <tr class="frow" data-fid="{{ f.finding_id }}" data-sev="{{ f.severity }}">
+          <td data-rank="{{ f.rank }}"><span class="chip" style="background:{{ f.color }}">{{ f.severity }}</span></td>
+          <td class="mono">{{ f.host }}</td>
+          <td>{{ f.title }}</td>
+          <td class="mono">{{ f.module }}</td>
+          <td class="mono">{{ f.evidence }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No findings were recorded in this run.</p>
+    {% endif %}
+  </div>
+
+  <!-- Asset inventory -->
+  <div class="sec">
+    <h2>Asset inventory</h2>
+    {% if inventory %}
+    <table class="sortable">
+      <thead><tr>
+        <th class="sortable" data-type="text">IP</th>
+        <th class="sortable" data-type="text">Alive</th>
+        <th class="sortable" data-type="num">Open ports</th>
+        <th class="sortable" data-type="text">OS guess</th>
+        <th class="sortable" data-type="rank">Grade</th>
+      </tr></thead>
+      <tbody>
+        {% for a in inventory %}
+        <tr>
+          <td class="mono">{{ a.ip }}</td>
+          <td>{{ "yes" if a.alive else "no" }}</td>
+          <td class="mono" data-num="{{ a.open_ports | length }}">{{ a.open_ports | join(', ') if a.open_ports else "—" }}</td>
+          <td class="mono">{{ a.os_guess or "—" }}</td>
+          <td data-rank="{{ a.score }}"><span class="gbadge" style="background:{{ a.grade_color }}">{{ a.grade }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No hosts were found up in this run.</p>
+    {% endif %}
+  </div>
+
+  <footer>
+    <div>Generated {{ generated_at }} · Sentinel v{{ version }}</div>
+    <div class="formula">{{ formula }}</div>
+  </footer>
+
+</div>
+
+<script type="application/json" id="sentinel-data">{{ data_json | safe }}</script>
+<script>
+(function(){
+  "use strict";
+  function each(sel, fn, root){ Array.prototype.forEach.call((root||document).querySelectorAll(sel), fn); }
+  var DATA = {findings: []};
+  try { DATA = JSON.parse(document.getElementById("sentinel-data").textContent); } catch (e) {}
+  var byId = {};
+  DATA.findings.forEach(function(f){
+    f._s = ((f.host||"")+" "+(f.module||"")+" "+(f.title||"")+" "+(f.detail||"")+" "+(f.evidence||"")+" "+(f.sev||"")).toLowerCase();
+    byId[f.id] = f;
+  });
+
+  var search = document.getElementById("f-search");
+  var counter = document.getElementById("f-count");
+  var sevBoxes = Array.prototype.slice.call(document.querySelectorAll(".sev-toggle"));
+
+  function apply(){
+    var q = (search && search.value || "").trim().toLowerCase();
+    var active = {};
+    sevBoxes.forEach(function(b){ active[b.getAttribute("data-sev")] = b.checked; });
+    each("[data-fid]", function(el){
+      var f = byId[el.getAttribute("data-fid")];
+      var txt = f ? f._s : (el.textContent||"").toLowerCase();
+      var vis = (active[el.getAttribute("data-sev")] !== false) && (!q || txt.indexOf(q) !== -1);
+      el.classList.toggle("filtered", !vis);
+    });
+    var shownHosts = 0;
+    each(".host", function(card){
+      var fin = card.querySelectorAll(".finding"), vis;
+      if (fin.length === 0){
+        vis = !q || (card.getAttribute("data-host")||"").toLowerCase().indexOf(q) !== -1;
+      } else {
+        vis = false;
+        for (var i=0;i<fin.length;i++){ if(!fin[i].classList.contains("filtered")){ vis=true; break; } }
+      }
+      card.classList.toggle("filtered", !vis);
+      if (vis) shownHosts++;
+    });
+    if (counter){
+      var vf = document.querySelectorAll(".finding:not(.filtered)").length;
+      counter.textContent = vf + " findings · " + shownHosts + " hosts";
+    }
+  }
+
+  if (search) search.addEventListener("input", apply);
+  sevBoxes.forEach(function(b){ b.addEventListener("change", apply); });
+
+  each(".collapse-btn", function(btn){
+    btn.addEventListener("click", function(){
+      var h = btn.closest(".host"), c = h.classList.toggle("collapsed");
+      btn.textContent = c ? "+" : "–";
+      btn.setAttribute("aria-expanded", c ? "false" : "true");
+    });
+  });
+  function setAll(coll){
+    each(".host", function(h){
+      h.classList.toggle("collapsed", coll);
+      var b = h.querySelector(".collapse-btn");
+      if (b){ b.textContent = coll ? "+" : "–"; b.setAttribute("aria-expanded", coll ? "false":"true"); }
+    });
+  }
+  var ea = document.getElementById("expand-all"), ca = document.getElementById("collapse-all");
+  if (ea) ea.addEventListener("click", function(){ setAll(false); });
+  if (ca) ca.addEventListener("click", function(){ setAll(true); });
+
+  function keyOf(cell, type){
+    if (!cell) return "";
+    if (type === "rank") return parseInt(cell.getAttribute("data-rank")||"0", 10);
+    if (type === "num")  return parseFloat(cell.getAttribute("data-num")||cell.textContent) || 0;
+    return (cell.textContent||"").trim().toLowerCase();
+  }
+  each("table.sortable th.sortable", function(th){
+    th.addEventListener("click", function(){
+      var table = th.closest("table"), tb = table.tBodies[0];
+      var idx = Array.prototype.indexOf.call(th.parentNode.children, th);
+      var type = th.getAttribute("data-type") || "text";
+      var dir = th.getAttribute("data-dir") === "asc" ? "desc" : "asc";
+      Array.prototype.forEach.call(th.parentNode.children, function(h){ if (h!==th) h.removeAttribute("data-dir"); });
+      th.setAttribute("data-dir", dir);
+      var rows = Array.prototype.slice.call(tb.rows);
+      rows.sort(function(a,b){
+        var x = keyOf(a.cells[idx], type), y = keyOf(b.cells[idx], type);
+        if (x < y) return dir === "asc" ? -1 : 1;
+        if (x > y) return dir === "asc" ? 1 : -1;
+        return 0;
+      });
+      rows.forEach(function(r){ tb.appendChild(r); });
+    });
+  });
+
+  apply();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+2026-10-09 16:50:21,674 INFO    sentinel.orchestrator: run 20261009T135021_quick_recon_11279d: workflow=quick_recon target='10.10.1.0/24' steps=['red.recon_nmap']
+2026-10-09 16:50:21,715 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-09 16:50:21,819 INFO    sentinel.orchestrator: run 20261009T135021_quick_recon_11279d complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-09 17:23:22,931 INFO    sentinel.orchestrator: run 20261009T142322_quick_recon_dcb2de: workflow=quick_recon target='127.0.0.1/32' steps=['red.recon_nmap']
+2026-10-09 17:23:22,978 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-09 17:23:23,789 INFO    sentinel.run: nmap: 1 host(s) reported for 127.0.0.1/32
+2026-10-09 17:23:23,807 INFO    sentinel.orchestrator: run 20261009T142322_quick_recon_dcb2de complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-09 17:47:19,068 INFO    sentinel.orchestrator: run 20261009T144719_quick_recon_da5c65: workflow=quick_recon target='10.10.1.0/24' steps=['red.recon_nmap']
+2026-10-09 17:47:19,116 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-09 18:02:06,616 INFO    sentinel.run: nmap: 20 host(s) reported for 10.10.1.0/24
+2026-10-09 18:02:06,632 INFO    sentinel.orchestrator: run 20261009T144719_quick_recon_da5c65 complete: {'hosts_up': 20, 'assets_total': 20, 'findings_total': 9, 'findings_by_severity': {'info': 8, 'low': 1, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-09 18:04:15,830 INFO    sentinel.orchestrator: run 20261009T150415_quick_recon_911e6d: workflow=quick_recon target='127.0.0.1/32' steps=['red.recon_nmap']
+2026-10-09 18:04:15,879 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-09 18:04:15,882 INFO    sentinel.run: recon: scanning 127.0.0.1/32 (fast mode) — nmap -sT -T4 --top-ports 100 --host-timeout 300s
+2026-10-09 18:04:16,013 INFO    sentinel.run: recon: 127.0.0.1 up, 1 port(s)
+2026-10-09 18:04:16,015 INFO    sentinel.run: recon: complete — 1/1 host(s) up, 1 open service(s)
+2026-10-09 18:04:16,029 INFO    sentinel.orchestrator: run 20261009T150415_quick_recon_911e6d complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-09 18:04:26,383 INFO    sentinel.orchestrator: run 20261009T150426_quick_recon_8228d3: workflow=quick_recon target='127.0.0.1/32' steps=['red.recon_nmap']
+2026-10-09 18:04:26,431 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-09 18:04:26,434 INFO    sentinel.run: recon: scanning 127.0.0.1/32 (full mode) — nmap -sT -sV -T4 --top-ports 1000 --host-timeout 60s
+2026-10-09 18:04:27,127 INFO    sentinel.run: recon: 127.0.0.1 up, 1 port(s)
+2026-10-09 18:04:27,130 INFO    sentinel.run: recon: complete — 1/1 host(s) up, 1 open service(s)
+2026-10-09 18:04:27,143 INFO    sentinel.orchestrator: run 20261009T150426_quick_recon_8228d3 complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-09 18:26:49,664 INFO    sentinel.orchestrator: run 20261009T152649_quick_recon_c7a941: workflow=quick_recon target='127.0.0.1/32' steps=['red.recon_nmap']
+2026-10-09 18:26:49,713 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-09 18:26:49,716 INFO    sentinel.run: recon: scanning 127.0.0.1/32 (full mode) — nmap -sT -sV -T4 --top-ports 1000 --host-timeout 300s
+2026-10-09 18:26:50,409 INFO    sentinel.run: recon: 127.0.0.1 up, 1 port(s)
+2026-10-09 18:26:50,412 INFO    sentinel.run: recon: complete — 1/1 host(s) up, 1 open service(s)
+2026-10-09 18:26:50,426 INFO    sentinel.orchestrator: run 20261009T152649_quick_recon_c7a941 complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-09 18:27:29,150 INFO    sentinel.orchestrator: run 20261009T152729_quick_recon_6a32a8: workflow=quick_recon target='10.10.1.0/24' steps=['red.recon_nmap']
+2026-10-09 18:27:29,198 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-09 18:27:29,201 INFO    sentinel.run: recon: scanning 10.10.1.0/24 (fast mode) — nmap -sT -T4 --top-ports 100 --host-timeout 300s
+2026-10-09 18:27:42,808 INFO    sentinel.run: recon: 10.10.1.1 up, 4 port(s)
+2026-10-09 18:27:42,810 INFO    sentinel.run: recon: 10.10.1.2 up, 3 port(s)
+2026-10-09 18:27:42,813 INFO    sentinel.run: recon: 10.10.1.20 up, 0 port(s)
+2026-10-09 18:27:42,815 INFO    sentinel.run: recon: 10.10.1.50 up, 0 port(s)
+2026-10-09 18:27:42,818 INFO    sentinel.run: recon: 10.10.1.51 up, 0 port(s)
+2026-10-09 18:27:42,820 INFO    sentinel.run: recon: 10.10.1.52 up, 0 port(s)
+2026-10-09 18:27:42,823 INFO    sentinel.run: recon: 10.10.1.53 up, 0 port(s)
+2026-10-09 18:27:42,825 INFO    sentinel.run: recon: 10.10.1.54 up, 0 port(s)
+2026-10-09 18:27:42,827 INFO    sentinel.run: recon: 10.10.1.55 up, 0 port(s)
+2026-10-09 18:27:42,830 INFO    sentinel.run: recon: 10.10.1.56 up, 0 port(s)
+2026-10-09 18:27:42,832 INFO    sentinel.run: recon: 10.10.1.70 up, 0 port(s)
+2026-10-09 18:27:42,835 INFO    sentinel.run: recon: 10.10.1.90 up, 0 port(s)
+2026-10-09 18:27:42,837 INFO    sentinel.run: recon: 10.10.1.99 up, 1 port(s)
+2026-10-09 18:27:42,840 INFO    sentinel.run: recon: complete — 13/13 host(s) up, 8 open service(s)
+2026-10-09 18:27:42,855 INFO    sentinel.orchestrator: run 20261009T152729_quick_recon_6a32a8 complete: {'hosts_up': 13, 'assets_total': 13, 'findings_total': 8, 'findings_by_severity': {'info': 7, 'low': 1, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-09 18:28:15,773 INFO    sentinel.orchestrator: run 20261009T152815_quick_recon_e369d6: workflow=quick_recon target='10.10.1.0/24' steps=['red.recon_nmap']
+2026-10-09 18:28:15,818 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-09 18:28:15,820 INFO    sentinel.run: recon: scanning 10.10.1.0/24 (fast mode) — nmap -sS -T4 --top-ports 100 --host-timeout 300s
+2026-10-09 18:29:47,964 INFO    sentinel.run: recon: 10.10.1.1 up, 4 port(s)
+2026-10-09 18:29:47,969 INFO    sentinel.run: recon: 10.10.1.2 up, 3 port(s)
+2026-10-09 18:29:47,973 INFO    sentinel.run: recon: 10.10.1.31 up, 5 port(s)
+2026-10-09 18:29:47,977 INFO    sentinel.run: recon: 10.10.1.50 up, 0 port(s)
+2026-10-09 18:29:47,981 INFO    sentinel.run: recon: 10.10.1.51 up, 0 port(s)
+2026-10-09 18:29:47,985 INFO    sentinel.run: recon: 10.10.1.52 up, 0 port(s)
+2026-10-09 18:29:47,989 INFO    sentinel.run: recon: 10.10.1.53 up, 0 port(s)
+2026-10-09 18:29:47,993 INFO    sentinel.run: recon: 10.10.1.54 up, 0 port(s)
+2026-10-09 18:29:47,997 INFO    sentinel.run: recon: 10.10.1.55 up, 0 port(s)
+2026-10-09 18:29:48,001 INFO    sentinel.run: recon: 10.10.1.56 up, 0 port(s)
+2026-10-09 18:29:48,005 INFO    sentinel.run: recon: 10.10.1.57 up, 0 port(s)
+2026-10-09 18:29:48,009 INFO    sentinel.run: recon: 10.10.1.59 up, 0 port(s)
+2026-10-09 18:29:48,012 INFO    sentinel.run: recon: 10.10.1.60 up, 0 port(s)
+2026-10-09 18:29:48,015 INFO    sentinel.run: recon: 10.10.1.63 up, 0 port(s)
+2026-10-09 18:29:48,017 INFO    sentinel.run: recon: 10.10.1.70 up, 0 port(s)
+2026-10-09 18:29:48,020 INFO    sentinel.run: recon: 10.10.1.89 up, 0 port(s)
+2026-10-09 18:29:48,022 INFO    sentinel.run: recon: 10.10.1.90 up, 0 port(s)
+2026-10-09 18:29:48,025 INFO    sentinel.run: recon: 10.10.1.99 up, 1 port(s)
+2026-10-09 18:29:48,027 INFO    sentinel.run: recon: complete — 18/18 host(s) up, 13 open service(s)
+2026-10-09 18:29:48,043 INFO    sentinel.orchestrator: run 20261009T152815_quick_recon_e369d6 complete: {'hosts_up': 18, 'assets_total': 18, 'findings_total': 13, 'findings_by_severity': {'info': 9, 'low': 1, 'medium': 3, 'high': 0, 'critical': 0}}
+2026-10-09 18:47:51,757 INFO    sentinel.orchestrator: run 20261009T154751_quick_recon_d04467: workflow=quick_recon target='10.10.1.0/24' steps=['red.recon_nmap']
+2026-10-09 18:47:51,802 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-09 18:47:51,805 INFO    sentinel.run: recon: scanning 10.10.1.0/24 (fast mode) — nmap -sT -T4 --top-ports 100 --host-timeout 300s
+2026-10-09 18:48:03,801 INFO    sentinel.run: recon: 10.10.1.1 up, 4 port(s)
+2026-10-09 18:48:03,804 INFO    sentinel.run: recon: 10.10.1.2 up, 3 port(s)
+2026-10-09 18:48:03,806 INFO    sentinel.run: recon: 10.10.1.50 up, 0 port(s)
+2026-10-09 18:48:03,809 INFO    sentinel.run: recon: 10.10.1.51 up, 0 port(s)
+2026-10-09 18:48:03,811 INFO    sentinel.run: recon: 10.10.1.52 up, 0 port(s)
+2026-10-09 18:48:03,815 INFO    sentinel.run: recon: 10.10.1.53 up, 0 port(s)
+2026-10-09 18:48:03,820 INFO    sentinel.run: recon: 10.10.1.54 up, 0 port(s)
+2026-10-09 18:48:03,826 INFO    sentinel.run: recon: 10.10.1.55 up, 0 port(s)
+2026-10-09 18:48:03,831 INFO    sentinel.run: recon: 10.10.1.56 up, 0 port(s)
+2026-10-09 18:48:03,837 INFO    sentinel.run: recon: 10.10.1.57 up, 0 port(s)
+2026-10-09 18:48:03,843 INFO    sentinel.run: recon: 10.10.1.58 up, 0 port(s)
+2026-10-09 18:48:03,848 INFO    sentinel.run: recon: 10.10.1.59 up, 0 port(s)
+2026-10-09 18:48:03,854 INFO    sentinel.run: recon: 10.10.1.60 up, 0 port(s)
+2026-10-09 18:48:03,859 INFO    sentinel.run: recon: 10.10.1.70 up, 0 port(s)
+2026-10-09 18:48:03,865 INFO    sentinel.run: recon: 10.10.1.90 up, 0 port(s)
+2026-10-09 18:48:03,871 INFO    sentinel.run: recon: 10.10.1.99 up, 1 port(s)
+2026-10-09 18:48:03,876 INFO    sentinel.run: recon: complete — 16/16 host(s) up, 8 open service(s)
+2026-10-09 18:48:03,899 INFO    sentinel.orchestrator: run 20261009T154751_quick_recon_d04467 complete: {'hosts_up': 16, 'assets_total': 16, 'findings_total': 8, 'findings_by_severity': {'info': 7, 'low': 1, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-09 18:48:44,181 INFO    sentinel.orchestrator: run 20261009T154844_quick_recon_ba6c09: workflow=quick_recon target='10.10.1.1/32' steps=['red.recon_nmap']
+2026-10-09 18:48:44,230 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-09 18:48:44,232 INFO    sentinel.run: recon: scanning 10.10.1.1/32 (full mode) — nmap -sT -sV -T4 --top-ports 1000 --host-timeout 300s
+2026-10-09 18:49:01,239 INFO    sentinel.run: recon: 10.10.1.1 up, 4 port(s)
+2026-10-09 18:49:01,242 INFO    sentinel.run: recon: complete — 1/1 host(s) up, 4 open service(s)
+2026-10-09 18:49:01,256 INFO    sentinel.orchestrator: run 20261009T154844_quick_recon_ba6c09 complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 4, 'findings_by_severity': {'info': 3, 'low': 1, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-09 20:28:37,124 WARNING sentinel.reporting: WeasyPrint unavailable; skipping PDF: cannot load library 'libpango-1.0-0': libpango-1.0-0: cannot open shared object file: No such file or directory.  Additionally, ctypes.util.find_library() did not manage to locate a library called 'libpango-1.0-0'

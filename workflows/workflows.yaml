@@ -1,0 +1,11 @@
+# Sentinel workflows — data, not code. Each workflow is an ordered list of
+# module names (the list IS the execution order). Compose from any role.
+#
+# Phase 0 ships only the three template modules. Add more workflows here as
+# modules land (e.g. wireless_check once red.wifi_scan + ml.detector_deauth exist).
+
+quick_recon:
+  steps: [red.recon_nmap]
+
+full_audit:
+  steps: [red.recon_nmap, blue.capture_tshark, ml.detector_template]

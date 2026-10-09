@@ -1,0 +1,411 @@
+{
+  "run_id": "20261009T152815_quick_recon_e369d6",
+  "workflow": "quick_recon",
+  "target": "10.10.1.0/24",
+  "started_at": "2026-10-09T15:28:15Z",
+  "schema_version": 1,
+  "finished_at": "2026-10-09T15:29:48Z",
+  "findings": [
+    {
+      "finding_id": "f-0001",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.1",
+      "title": "ssh (22/tcp) open",
+      "detail": "Service present",
+      "evidence": "22/tcp ssh",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "ssh"
+      ]
+    },
+    {
+      "finding_id": "f-0002",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.1",
+      "title": "domain (53/tcp) open",
+      "detail": "Service present",
+      "evidence": "53/tcp domain",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "domain"
+      ]
+    },
+    {
+      "finding_id": "f-0003",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "low",
+      "target": "10.10.1.1",
+      "title": "http (80/tcp) open",
+      "detail": "Plaintext HTTP (no TLS)",
+      "evidence": "80/tcp http",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "http"
+      ]
+    },
+    {
+      "finding_id": "f-0004",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.1",
+      "title": "upnp (1900/tcp) open",
+      "detail": "Open service",
+      "evidence": "1900/tcp upnp",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "upnp"
+      ]
+    },
+    {
+      "finding_id": "f-0005",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.2",
+      "title": "ssh (22/tcp) open",
+      "detail": "Service present",
+      "evidence": "22/tcp ssh",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "ssh"
+      ]
+    },
+    {
+      "finding_id": "f-0006",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.2",
+      "title": "domain (53/tcp) open",
+      "detail": "Service present",
+      "evidence": "53/tcp domain",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "domain"
+      ]
+    },
+    {
+      "finding_id": "f-0007",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.2",
+      "title": "rpcbind (111/tcp) open",
+      "detail": "Open service",
+      "evidence": "111/tcp rpcbind",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "rpcbind"
+      ]
+    },
+    {
+      "finding_id": "f-0008",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.31",
+      "title": "msrpc (135/tcp) open",
+      "detail": "Open service",
+      "evidence": "135/tcp msrpc",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "msrpc"
+      ]
+    },
+    {
+      "finding_id": "f-0009",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "medium",
+      "target": "10.10.1.31",
+      "title": "netbios-ssn (139/tcp) open",
+      "detail": "SMB file sharing exposed",
+      "evidence": "139/tcp netbios-ssn",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "netbios-ssn"
+      ]
+    },
+    {
+      "finding_id": "f-0010",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "medium",
+      "target": "10.10.1.31",
+      "title": "microsoft-ds (445/tcp) open",
+      "detail": "SMB file sharing exposed",
+      "evidence": "445/tcp microsoft-ds",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "microsoft-ds"
+      ]
+    },
+    {
+      "finding_id": "f-0011",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "medium",
+      "target": "10.10.1.31",
+      "title": "ms-wbt-server (3389/tcp) open",
+      "detail": "Remote Desktop (RDP) exposed",
+      "evidence": "3389/tcp ms-wbt-server",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "ms-wbt-server"
+      ]
+    },
+    {
+      "finding_id": "f-0012",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.31",
+      "title": "X11 (6000/tcp) open",
+      "detail": "Open service",
+      "evidence": "6000/tcp X11",
+      "timestamp": "2026-10-09T15:29:47Z",
+      "tags": [
+        "network",
+        "open_service",
+        "X11"
+      ]
+    },
+    {
+      "finding_id": "f-0013",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "10.10.1.99",
+      "title": "ssh (22/tcp) open",
+      "detail": "Service present",
+      "evidence": "22/tcp ssh",
+      "timestamp": "2026-10-09T15:29:48Z",
+      "tags": [
+        "network",
+        "open_service",
+        "ssh"
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "ip": "10.10.1.1",
+      "alive": true,
+      "mac": "CC:32:E5:41:02:14",
+      "vendor": "TP-Link Technologies",
+      "hostname": "",
+      "open_ports": [
+        22,
+        53,
+        80,
+        1900
+      ],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.2",
+      "alive": true,
+      "mac": "DC:A6:32:C3:E1:4E",
+      "vendor": "Raspberry Pi Trading",
+      "hostname": "",
+      "open_ports": [
+        22,
+        53,
+        111
+      ],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.31",
+      "alive": true,
+      "mac": "60:45:2E:6D:9C:9B",
+      "vendor": "Intel Corporate",
+      "hostname": "",
+      "open_ports": [
+        135,
+        139,
+        445,
+        3389,
+        6000
+      ],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.50",
+      "alive": true,
+      "mac": "8C:4F:00:56:F1:2E",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.51",
+      "alive": true,
+      "mac": "8C:4F:00:56:BF:0F",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.52",
+      "alive": true,
+      "mac": "8C:4F:00:55:C9:FF",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.53",
+      "alive": true,
+      "mac": "8C:4F:00:57:6A:36",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.54",
+      "alive": true,
+      "mac": "24:4C:AB:72:FE:8F",
+      "vendor": "Espressif",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.55",
+      "alive": true,
+      "mac": "8C:4F:00:55:14:EE",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.56",
+      "alive": true,
+      "mac": "8C:4F:00:55:C1:43",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.57",
+      "alive": true,
+      "mac": "D8:3B:DA:C8:FD:24",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.59",
+      "alive": true,
+      "mac": "80:65:99:E1:AE:80",
+      "vendor": "Espressif",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.60",
+      "alive": true,
+      "mac": "28:56:2F:49:C9:2C",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.63",
+      "alive": true,
+      "mac": "D8:3B:DA:C9:4F:A8",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.70",
+      "alive": true,
+      "mac": "04:39:CB:25:B7:AC",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.89",
+      "alive": true,
+      "mac": "A0:04:60:B7:D6:31",
+      "vendor": "Netgear",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.90",
+      "alive": true,
+      "mac": "1A:85:A1:82:C3:17",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [],
+      "os_guess": ""
+    },
+    {
+      "ip": "10.10.1.99",
+      "alive": true,
+      "mac": "",
+      "vendor": "",
+      "hostname": "",
+      "open_ports": [
+        22
+      ],
+      "os_guess": ""
+    }
+  ],
+  "stats": {
+    "hosts_up": 18,
+    "assets_total": 18,
+    "findings_total": 13,
+    "findings_by_severity": {
+      "info": 9,
+      "low": 1,
+      "medium": 3,
+      "high": 0,
+      "critical": 0
+    }
+  }
+}

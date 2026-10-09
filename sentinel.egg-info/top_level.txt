@@ -1,0 +1,5 @@
+core
+dashboard
+display
+plugins
+reporting

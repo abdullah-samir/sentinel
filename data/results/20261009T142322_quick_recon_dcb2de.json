@@ -1,0 +1,51 @@
+{
+  "run_id": "20261009T142322_quick_recon_dcb2de",
+  "workflow": "quick_recon",
+  "target": "127.0.0.1/32",
+  "started_at": "2026-10-09T14:23:22Z",
+  "schema_version": 1,
+  "finished_at": "2026-10-09T14:23:23Z",
+  "findings": [
+    {
+      "finding_id": "f-0001",
+      "module": "red.recon_nmap",
+      "type": "open_service",
+      "severity": "info",
+      "target": "127.0.0.1",
+      "title": "ssh (22/tcp) open",
+      "detail": "Service present",
+      "evidence": "22/tcp ssh OpenSSH 10.0p2 Debian 7+deb13u4 protocol 2.0",
+      "timestamp": "2026-10-09T14:23:23Z",
+      "tags": [
+        "network",
+        "open_service",
+        "ssh"
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "ip": "127.0.0.1",
+      "alive": true,
+      "mac": "",
+      "vendor": "",
+      "hostname": "localhost",
+      "open_ports": [
+        22
+      ],
+      "os_guess": ""
+    }
+  ],
+  "stats": {
+    "hosts_up": 1,
+    "assets_total": 1,
+    "findings_total": 1,
+    "findings_by_severity": {
+      "info": 1,
+      "low": 0,
+      "medium": 0,
+      "high": 0,
+      "critical": 0
+    }
+  }
+}

@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+data/results/
+data/reports/
+data/logs/
+captures/
+*.pcap
+data/models/*.pkl

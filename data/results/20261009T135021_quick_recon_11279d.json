@@ -1,0 +1,38 @@
+{
+  "run_id": "20261009T135021_quick_recon_11279d",
+  "workflow": "quick_recon",
+  "target": "10.10.1.0/24",
+  "started_at": "2026-10-09T13:50:21Z",
+  "schema_version": 1,
+  "finished_at": "2026-10-09T13:50:21Z",
+  "findings": [
+    {
+      "finding_id": "f-0001",
+      "module": "red.recon_nmap",
+      "type": "module_status",
+      "severity": "info",
+      "target": "10.10.1.0/24",
+      "title": "Nmap recon stub active (Phase 0 \u2014 no scan performed)",
+      "detail": "Real host/service/OS scanning arrives in Phase 1. This stub emits no network traffic.",
+      "evidence": "Nmap version 7.95 ( https://nmap.org )",
+      "timestamp": "2026-10-09T13:50:21Z",
+      "tags": [
+        "recon",
+        "stub"
+      ]
+    }
+  ],
+  "assets": [],
+  "stats": {
+    "hosts_up": 0,
+    "assets_total": 0,
+    "findings_total": 1,
+    "findings_by_severity": {
+      "info": 1,
+      "low": 0,
+      "medium": 0,
+      "high": 0,
+      "critical": 0
+    }
+  }
+}

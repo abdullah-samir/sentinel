@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "scapy","python-nmap","fastapi","uvicorn[standard]","jinja2","weasyprint",
+  "pandas","numpy","scikit-learn","rich","pyyaml","python-dateutil",
+]
+
+[project.scripts]
+sentinel = "core.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["core*","plugins*","reporting*","dashboard*","display*"]
+exclude = ["venv*","tests*","data*","captures*","workflows*"]
