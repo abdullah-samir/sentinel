@@ -7,3 +7,4 @@ data/logs/
 captures/
 *.pcap
 data/models/*.pkl
+__pycache__/
