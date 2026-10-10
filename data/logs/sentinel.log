@@ -440,3 +440,8 @@
 2026-10-10 02:19:28,792 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB), filter='not port 22'
 2026-10-10 02:19:59,801 INFO    sentinel.run: capture: done — iface=wlan0 packets=131 bytes=16948 duration=31.0s stop=duration
 2026-10-10 02:20:03,745 INFO    sentinel.orchestrator: run 2026-10-09_23-19_capture-only_10.10.1.0-24_73b41c complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-10 02:27:24,101 INFO    sentinel.orchestrator: run 2026-10-09_23-27_capture-only_10.10.1.0-24_f0b0e5: workflow=capture_only target='10.10.1.0/24' steps=['blue.capture_tshark']
+2026-10-10 02:27:24,141 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-10 02:27:24,147 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB), filter='not port 22'
+2026-10-10 02:27:55,144 INFO    sentinel.run: capture: done — iface=wlan0 packets=145 bytes=19948 duration=31.0s stop=duration
+2026-10-10 02:27:59,085 INFO    sentinel.orchestrator: run 2026-10-09_23-27_capture-only_10.10.1.0-24_f0b0e5 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}

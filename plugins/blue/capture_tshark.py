@@ -19,6 +19,13 @@ applied to every password / community / token before it reaches the store.
 
 Interface selection order: config.capture_iface, else the default-route
 interface, else the first non-loopback up interface.
+
+STREAM CORRELATION: protocols that spread a login over multiple packets (FTP and
+POP3 send USER then PASS in separate packets; an HTTP POST's headers and form
+body can split across segments) are correlated by ``tcp.stream`` — not ip.src,
+which collides across concurrent sessions from one host and is empty for IPv6.
+A USER seen without a following PASS is still reported as a cleartext login
+attempt (password marked "not captured").
 """
 from __future__ import annotations
 
@@ -312,13 +319,21 @@ class CaptureTshark(Module):
 
     # --- tshark streaming helper -----------------------------------------
     def _stream(self, ctx, pcap: Path, fields: List[str], on_row,
-                display_filter: Optional[str] = None, timeout: int = 180) -> bool:
+                display_filter: Optional[str] = None, timeout: int = 180,
+                two_pass: bool = False) -> bool:
         """Run `tshark -r pcap -T fields ...` and call on_row(list) per packet.
         Streams stdout (the pcap is never loaded whole into memory). Returns
         False — without raising — if tshark errors (e.g. an unknown field), so
-        the caller cleanly skips that check."""
-        args = ["tshark", "-r", str(pcap), "-n", "-T", "fields",
-                "-E", "separator=\t", "-E", "occurrence=a"]
+        the caller cleanly skips that check.
+
+        `two_pass` adds `-2`: tshark builds full conversation state before
+        dissecting, which is required to reliably label stateful app-layer
+        protocols (FTP/POP3/HTTP) whose single-pass dissection can miss packets
+        in a real capture (reordering, retransmits, mid-stream start)."""
+        args = ["tshark", "-r", str(pcap), "-n"]
+        if two_pass:
+            args.append("-2")
+        args += ["-T", "fields", "-E", "separator=\t", "-E", "occurrence=a"]
         if display_filter:
             args += ["-Y", display_filter]
         for f in fields:
@@ -376,7 +391,7 @@ class CaptureTshark(Module):
 
         ok = self._stream(ctx, pcap,
                           ["frame.len", "_ws.col.Protocol", "ip.src", "ip.dst",
-                           "eth.src", "eth.dst"], row)
+                           "eth.src", "eth.dst"], row, two_pass=True)
         if not ok:
             return None
         return {"packets": totals["packets"], "bytes": totals["bytes"],
@@ -409,7 +424,7 @@ class CaptureTshark(Module):
                 found.append((host, uri, user, pw))
 
         if not self._stream(ctx, pcap, ["http.authorization", "http.host",
-                                        "http.request.uri"], row):
+                                        "http.request.uri"], row, two_pass=True):
             return
         for host, uri, user, pw in found:
             where = f"http://{host}{uri}" if host else (uri or "(unknown)")
@@ -422,91 +437,131 @@ class CaptureTshark(Module):
                 tags=["capture", "cleartext", "http"])
 
     def _check_http_post(self, ctx, pcap: Path) -> None:
-        found = []
+        # The POST request line/headers and the urlencoded body can land in
+        # different packets; correlate the method and form fields by tcp.stream
+        # rather than assuming they share one row.
+        streams: Dict[str, Dict] = {}
 
         def row(r):
             method = (r[0] if r else "").upper()
-            if method != "POST":
-                return
             uri = r[1] if len(r) > 1 else ""
             host = r[2] if len(r) > 2 else ""
-            keys = (r[3] if len(r) > 3 else "").split(",")
-            vals = (r[4] if len(r) > 4 else "").split(",")
-            pairs = list(zip(keys, vals))
-            if any(k.lower() in _SECRET_KEYS for k, _ in pairs if k):
-                found.append((host, uri, pairs))
+            keys = r[3] if len(r) > 3 else ""
+            vals = r[4] if len(r) > 4 else ""
+            sid = r[5] if len(r) > 5 else ""
+            st = streams.setdefault(sid, {"post": False, "pairs": [], "host": "", "uri": ""})
+            if method == "POST":
+                st["post"] = True
+                st["host"] = host or st["host"]
+                st["uri"] = uri or st["uri"]
+            if keys:
+                for k, v in zip(keys.split(","), vals.split(",")):
+                    if k:
+                        st["pairs"].append((k, v))
 
         if not self._stream(ctx, pcap, ["http.request.method", "http.request.uri",
                                         "http.host", "urlencoded-form.key",
-                                        "urlencoded-form.value"], row):
+                                        "urlencoded-form.value", "tcp.stream"], row,
+                            two_pass=True):
             return
-        for host, uri, pairs in found:
-            shown = " ".join(
-                f"{k}={_mask(v) if k.lower() in _SECRET_KEYS else v}"
-                for k, v in pairs if k)
-            where = f"http://{host}{uri}" if host else (uri or "(unknown)")
+        for st in streams.values():
+            if not st["post"]:
+                continue
+            if not any(k.lower() in _SECRET_KEYS for k, _ in st["pairs"]):
+                continue
+            shown = " ".join(f"{k}={_mask(v) if k.lower() in _SECRET_KEYS else v}"
+                             for k, v in st["pairs"])
+            where = f"http://{st['host']}{st['uri']}" if st["host"] else (st["uri"] or "(unknown)")
             ctx.store.add_finding(
                 module=self.manifest.name, type="cleartext_cred", severity=Severity.HIGH,
-                target=host or "(capture)", title="Cleartext credentials — HTTP POST form",
+                target=st["host"] or "(capture)", title="Cleartext credentials — HTTP POST form",
                 detail="A login form was submitted over plaintext HTTP.",
                 evidence=f"HTTP POST {where} {shown}"[:300],
                 tags=["capture", "cleartext", "http"])
 
     def _check_ftp(self, ctx, pcap: Path) -> None:
-        pending: Dict[str, str] = {}
-        events = []
+        # FTP sends USER and PASS in SEPARATE packets of the same control
+        # connection, so correlate on tcp.stream (not ip.src — which collides
+        # across concurrent sessions from one host and is empty for IPv6).
+        streams: Dict[str, Dict] = {}
 
         def row(r):
             cmd = (r[0] if r else "").upper()
             arg = r[1] if len(r) > 1 else ""
-            src = r[2] if len(r) > 2 else ""
+            sid = r[2] if len(r) > 2 else ""
+            src = r[3] if len(r) > 3 else ""
+            if cmd not in ("USER", "PASS"):
+                return
+            st = streams.setdefault(sid, {"user": None, "pw": None, "src": ""})
+            if src and not st["src"]:
+                st["src"] = src
             if cmd == "USER":
-                pending[src] = arg
-            elif cmd == "PASS":
-                events.append((src, pending.get(src, ""), arg))
+                st["user"] = arg
+            else:
+                st["pw"] = arg
 
         if not self._stream(ctx, pcap, ["ftp.request.command", "ftp.request.arg",
-                                        "ip.src"], row):
+                                        "tcp.stream", "ip.src"], row, two_pass=True):
             return
-        for src, user, pw in events:
+        for st in streams.values():
+            if st["user"] is None and st["pw"] is None:
+                continue
+            user = st["user"] if st["user"] is not None else "?"
+            # USER-without-PASS is still a reportable cleartext login attempt.
+            if st["pw"] is not None:
+                ev = f"FTP login user={user} pass={_mask(st['pw'])}"
+            else:
+                ev = f"FTP login attempt user={user} pass=(not captured)"
+            if st["src"]:
+                ev += f" from {st['src']}"
             ctx.store.add_finding(
                 module=self.manifest.name, type="cleartext_cred", severity=Severity.HIGH,
-                target=src or "(capture)", title="Cleartext credentials — FTP login",
-                detail="FTP transmits USER/PASS in cleartext.",
-                evidence=f"FTP login user={user or '?'} pass={_mask(pw)}"
-                         + (f" from {src}" if src else ""),
+                target=st["src"] or "(capture)", title="Cleartext credentials — FTP login",
+                detail="FTP transmits USER/PASS in cleartext.", evidence=ev,
                 tags=["capture", "cleartext", "ftp"])
 
     # --- mail credential checks (MEDIUM) ----------------------------------
     def _check_mail(self, ctx, pcap: Path) -> None:
-        pop_pending: Dict[str, str] = {}
-        pop_events = []
+        # POP3 USER/PASS span two packets (like FTP) -> correlate on tcp.stream.
+        # IMAP LOGIN carries user+pass in one request line (single packet).
+        pop: Dict[str, Dict] = {}
         imap_events = []
 
         def row(r):
             pcmd = (r[0] if r else "").upper()
             pparam = r[1] if len(r) > 1 else ""
             ireq = r[2] if len(r) > 2 else ""
-            src = r[3] if len(r) > 3 else ""
-            if pcmd == "USER":
-                pop_pending[src] = pparam
-            elif pcmd == "PASS":
-                pop_events.append((src, pop_pending.get(src, ""), pparam))
+            sid = r[3] if len(r) > 3 else ""
+            src = r[4] if len(r) > 4 else ""
+            if pcmd in ("USER", "PASS"):
+                st = pop.setdefault(sid, {"user": None, "pw": None, "src": ""})
+                if src and not st["src"]:
+                    st["src"] = src
+                if pcmd == "USER":
+                    st["user"] = pparam
+                else:
+                    st["pw"] = pparam
             if ireq and "login" in ireq.lower():
-                toks = ireq.split()
-                # "<tag> LOGIN <user> <pass>"
+                toks = ireq.split()            # "<tag> LOGIN <user> <pass>"
                 if len(toks) >= 4 and toks[1].lower() == "login":
                     imap_events.append((src, toks[2], toks[3]))
 
         if not self._stream(ctx, pcap, ["pop.request.command", "pop.request.parameter",
-                                        "imap.request", "ip.src"], row):
+                                        "imap.request", "tcp.stream", "ip.src"], row,
+                            two_pass=True):
             return
-        for src, user, pw in pop_events:
+        for st in pop.values():
+            if st["user"] is None and st["pw"] is None:
+                continue
+            user = st["user"] if st["user"] is not None else "?"
+            pwtxt = _mask(st["pw"]) if st["pw"] is not None else "(not captured)"
             ctx.store.add_finding(
                 module=self.manifest.name, type="mail_cred", severity=Severity.MEDIUM,
-                target=src or "(capture)", title="Cleartext credentials — POP3 login",
+                target=st["src"] or "(capture)", title="Cleartext credentials — POP3 login",
                 detail="POP3 USER/PASS without TLS exposes mailbox credentials.",
-                evidence=f"POP3 user={user or '?'} pass={_mask(pw)}", tags=["capture", "cleartext", "pop3"])
+                evidence=f"POP3 user={user} pass={pwtxt}"
+                         + (f" from {st['src']}" if st["src"] else ""),
+                tags=["capture", "cleartext", "pop3"])
         for src, user, pw in imap_events:
             ctx.store.add_finding(
                 module=self.manifest.name, type="mail_cred", severity=Severity.MEDIUM,
