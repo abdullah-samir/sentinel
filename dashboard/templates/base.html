@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Sentinel{% endblock %} — Sentinel</title>
+<style>
+  :root{
+    --bg:#0E1420; --panel:#151D2C; --border:#24324A; --ink:#EAF0F8; --muted:#8B98AB;
+    --teal:#2DD4BF; --orange:#F5953E; --red:#E5484D;
+    --sans:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --mono:ui-monospace, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+       line-height:1.5;font-size:15px}
+  a{color:var(--teal);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1100px;margin:0 auto;padding:20px 16px 56px}
+  header.nav{display:flex;align-items:center;gap:18px;border-bottom:1px solid var(--border);
+       padding:14px 16px;background:var(--panel)}
+  header.nav .brand{font-weight:800;letter-spacing:.3px;font-size:18px}
+  header.nav .brand .dot{color:var(--teal)}
+  header.nav a.navlink{color:var(--muted);font-size:14px}
+  header.nav a.navlink:hover,header.nav a.navlink.active{color:var(--ink)}
+  header.nav .spacer{margin-left:auto}
+  header.nav form{margin:0}
+  .btn{background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:8px;
+       padding:8px 13px;font:inherit;cursor:pointer}
+  .btn:hover{border-color:var(--teal)}
+  .btn.primary{background:var(--teal);color:#0E1420;border-color:var(--teal);font-weight:700}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+  h1{font-size:20px;margin:6px 0 16px}
+  h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin:0 0 10px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.08em}
+  td.mono,.mono{font-family:var(--mono);word-break:break-word}
+  input,select{background:var(--bg);border:1px solid var(--border);color:var(--ink);
+       border-radius:8px;padding:9px 11px;font:inherit}
+  .muted{color:var(--muted)}
+  .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700}
+  .gbadge{font-weight:800;border-radius:7px;padding:2px 9px;color:#0E1420;font-size:13px}
+  .sev{font-family:var(--mono);font-weight:700;margin-right:7px}
+  .banner{border:1px solid var(--border);border-left:4px solid var(--teal);border-radius:8px;
+       padding:11px 14px;margin:0 0 14px;background:var(--panel)}
+  .banner.warn{border-left-color:var(--orange)}
+  .banner.err{border-left-color:var(--red)}
+  .empty{color:var(--muted);text-align:center;padding:40px 0}
+  footer{color:var(--muted);font-size:12px;margin-top:26px}
+</style>
+</head>
+<body>
+{% block nav %}
+<header class="nav">
+  <span class="brand">Sentinel<span class="dot">.</span></span>
+  {% if user %}
+  <a class="navlink" href="/">Overview</a>
+  <a class="navlink" href="/modules">Modules</a>
+  <span class="spacer"></span>
+  <span class="muted" style="font-size:13px">{{ user }}</span>
+  <form method="post" action="/logout">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="btn" type="submit">Log out</button>
+  </form>
+  {% endif %}
+</header>
+{% endblock %}
+<div class="wrap">
+  {% block content %}{% endblock %}
+  <footer>Sentinel v{{ version }} · local dashboard</footer>
+</div>
+</body>
+</html>

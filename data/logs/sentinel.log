@@ -445,3 +445,42 @@
 2026-10-10 02:27:24,147 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB), filter='not port 22'
 2026-10-10 02:27:55,144 INFO    sentinel.run: capture: done — iface=wlan0 packets=145 bytes=19948 duration=31.0s stop=duration
 2026-10-10 02:27:59,085 INFO    sentinel.orchestrator: run 2026-10-09_23-27_capture-only_10.10.1.0-24_f0b0e5 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-10 12:29:06,555 INFO    sentinel.orchestrator: run 2026-10-10_09-29_capture-only_7b45be: workflow=capture_only target='(none)' steps=['blue.capture_tshark']
+2026-10-10 12:29:06,627 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-10 12:29:06,634 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
+2026-10-10 12:29:37,630 INFO    sentinel.run: capture: done — iface=wlan0 packets=554 bytes=196984 duration=31.0s stop=duration
+2026-10-10 12:29:41,800 INFO    sentinel.orchestrator: run 2026-10-10_09-29_capture-only_7b45be complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-10 12:41:35,984 INFO    sentinel.orchestrator: run 2026-10-10_09-41_capture-only_10.10.1.0-24_9654ae: workflow=capture_only target='10.10.1.0/24' steps=['blue.capture_tshark']
+2026-10-10 12:41:35,996 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-10 12:41:36,002 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
+2026-10-10 12:42:07,006 INFO    sentinel.run: capture: done — iface=wlan0 packets=939 bytes=258816 duration=31.0s stop=duration
+2026-10-10 12:42:11,434 INFO    sentinel.orchestrator: run 2026-10-10_09-41_capture-only_10.10.1.0-24_9654ae complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-10 16:40:04,324 INFO    sentinel.orchestrator: run 2026-10-10_13-40_quick-recon_127.0.0.1-32_3a9546: workflow=quick_recon target='127.0.0.1/32' steps=['red.recon_nmap']
+2026-10-10 16:40:04,371 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-10 16:40:04,375 INFO    sentinel.run: recon: scanning 127.0.0.1/32 (full mode) — nmap -sT -sV -T4 --top-ports 1000 --host-timeout 300s
+2026-10-10 16:40:16,354 INFO    sentinel.run: recon: unprivileged scan — MAC/vendor unavailable (ARP/OS detection need root)
+2026-10-10 16:40:16,358 INFO    sentinel.run: recon: 127.0.0.1 up, 2 port(s)
+2026-10-10 16:40:16,361 INFO    sentinel.run: recon: complete — 1 host(s) up (of 1 scanned), 2 open service(s)
+2026-10-10 16:40:16,378 INFO    sentinel.orchestrator: run 2026-10-10_13-40_quick-recon_127.0.0.1-32_3a9546 complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 2, 'findings_by_severity': {'info': 1, 'low': 1, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-10 16:54:31,444 INFO    sentinel.orchestrator: run 2026-10-10_13-54_capture-only_10.10.1.0-24_4d5616: workflow=capture_only target='10.10.1.0/24' steps=['blue.capture_tshark']
+2026-10-10 16:54:31,487 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-10 16:54:31,494 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
+2026-10-10 16:55:02,484 INFO    sentinel.run: capture: done — iface=wlan0 packets=455 bytes=161708 duration=31.0s stop=duration
+2026-10-10 16:55:06,569 INFO    sentinel.orchestrator: run 2026-10-10_13-54_capture-only_10.10.1.0-24_4d5616 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-10 17:04:10,506 INFO    sentinel.orchestrator: run 2026-10-10_14-04_quick-recon_127.0.0.1-32_4985db: workflow=quick_recon target='127.0.0.1/32' steps=['red.recon_nmap']
+2026-10-10 17:04:10,561 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-10 17:04:10,564 INFO    sentinel.run: recon: scanning 127.0.0.1/32 (full mode) — nmap -sT -sV -T4 --top-ports 1000 --host-timeout 300s
+2026-10-10 17:04:22,453 INFO    sentinel.run: recon: unprivileged scan — MAC/vendor unavailable (ARP/OS detection need root)
+2026-10-10 17:04:22,457 INFO    sentinel.run: recon: 127.0.0.1 up, 3 port(s)
+2026-10-10 17:04:22,459 INFO    sentinel.run: recon: complete — 1 host(s) up (of 1 scanned), 3 open service(s)
+2026-10-10 17:04:22,473 INFO    sentinel.orchestrator: run 2026-10-10_14-04_quick-recon_127.0.0.1-32_4985db complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 3, 'findings_by_severity': {'info': 1, 'low': 2, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-10 17:11:50,298 INFO    sentinel.orchestrator: run 2026-10-10_14-11_capture-only_10.10.1.0-24_dcc114: workflow=capture_only target='10.10.1.0/24' steps=['blue.capture_tshark']
+2026-10-10 17:11:50,329 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-10 17:11:50,344 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
+2026-10-10 17:12:21,373 INFO    sentinel.run: capture: done — iface=wlan0 packets=628 bytes=203976 duration=31.0s stop=duration
+2026-10-10 17:12:25,581 INFO    sentinel.orchestrator: run 2026-10-10_14-11_capture-only_10.10.1.0-24_dcc114 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-10 17:14:20,406 INFO    sentinel.orchestrator: run 2026-10-10_14-14_capture-only_10.10.1.0-24_16a4ca: workflow=capture_only target='10.10.1.0/24' steps=['blue.capture_tshark']
+2026-10-10 17:14:20,463 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-10 17:14:20,472 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
+2026-10-10 17:14:51,471 INFO    sentinel.run: capture: done — iface=wlan0 packets=585 bytes=284340 duration=31.0s stop=duration
+2026-10-10 17:14:55,661 INFO    sentinel.orchestrator: run 2026-10-10_14-14_capture-only_10.10.1.0-24_16a4ca complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}

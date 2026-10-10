@@ -6,6 +6,7 @@ Requires-Dist: scapy
 Requires-Dist: python-nmap
 Requires-Dist: fastapi
 Requires-Dist: uvicorn[standard]
+Requires-Dist: httpx
 Requires-Dist: jinja2
 Requires-Dist: weasyprint
 Requires-Dist: pandas

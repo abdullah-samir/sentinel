@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Live run{% endblock %}
+{% block content %}
+<style>
+  .spin{width:18px;height:18px;border-radius:50%;border:3px solid var(--border);
+        border-top-color:var(--teal);display:inline-block;vertical-align:middle;
+        animation:spin 0.9s linear infinite}
+  .spin.stopped{animation:none;border-top-color:var(--teal);border-color:var(--teal)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .pulse{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+  .bar-wrap{height:10px;background:var(--bg);border:1px solid var(--border);border-radius:999px;overflow:hidden}
+  #bar{height:100%;width:0;background:var(--teal);transition:width .4s ease}
+  #console{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border);
+           border-radius:8px;padding:10px;height:300px;overflow:auto;white-space:pre-wrap}
+  .cline{padding:1px 0;border-bottom:1px solid rgba(36,50,74,.4)}
+  .statrow{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:10px 0}
+  .fcount{font-family:var(--mono)}
+  #reportlink{display:none}
+</style>
+
+<p style="margin:0 0 10px"><a href="/">&larr; Overview</a></p>
+
+<div class="panel">
+  <div class="statrow">
+    <span id="spinner" class="spin"></span>
+    <strong id="status">running</strong>
+    <span class="muted mono">{{ run_id }}</span>
+    <span class="spacer" style="margin-left:auto"></span>
+    <a id="reportlink" class="btn primary" href="/run/{{ run_id }}">View report &rarr;</a>
+  </div>
+  <div class="statrow">
+    <span>elapsed <strong id="elapsed">0s</strong></span>
+    <span id="eta" class="muted">estimating…</span>
+    <span id="steps" class="muted">0 / ? steps</span>
+    <span id="hosts" class="muted">0 hosts</span>
+  </div>
+  <div class="bar-wrap"><div id="bar"></div></div>
+  <div id="step" class="muted" style="margin-top:8px">starting…</div>
+  <div class="statrow" style="margin-top:12px">
+    {% for s in sev_order %}
+    <span class="fcount" style="color:{{ sev_color[s] }}">{{ s }} <strong id="f-{{ s }}">0</strong></span>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Live console</h2>
+  <div id="console"></div>
+  <p id="nojs" class="muted" style="display:none;margin-top:10px">
+    Live updates need JavaScript. <a href="/">Open the overview</a> (auto-refreshes).</p>
+  <noscript>
+    <meta http-equiv="refresh" content="5;url=/">
+    <p class="muted">JavaScript is off — <a href="/">the overview</a> refreshes automatically.</p>
+  </noscript>
+</div>
+
+<script type="application/json" id="snap">{{ snapshot | tojson }}</script>
+<script>
+(function(){
+  "use strict";
+  var RUN_ID = {{ run_id | tojson }};
+  var SNAP = JSON.parse(document.getElementById('snap').textContent || 'null');
+  var elapsedBase = (SNAP && SNAP.eta) ? SNAP.eta.elapsed : 0;
+  var elapsedStart = Date.now();
+  var seen = {}, es = null;
+
+  function setText(id,t){ var e=document.getElementById(id); if(e) e.textContent=t; }
+  function fmtDur(s){ s=Math.max(0,Math.floor(s)); var m=Math.floor(s/60);
+    return m ? (m+"m "+(s%60)+"s") : (s+"s"); }
+
+  function lineText(e){
+    switch(e.event){
+      case 'log': return e.message || '';
+      case 'run.start': return '▶ run started ('+(e.steps_total||'?')+' steps)';
+      case 'step.start': return '▶ '+(e.name||'step')+' started';
+      case 'step.done': return '✓ '+(e.name||'step')+' done';
+      case 'step.skip': return '• '+(e.name||'step')+' skipped'+(e.reason?(' ('+e.reason+')'):'');
+      case 'step.refuse': return '• '+(e.name||'step')+' refused';
+      case 'run.done': return '✓ run complete';
+      default: return e.event || '';
+    }
+  }
+  function addLine(e){
+    var seq = (e.seq!=null) ? e.seq : e._seq;
+    if(seq!=null){ if(seen[seq]) return; seen[seq]=1; }
+    var box=document.getElementById('console');
+    var d=document.createElement('div'); d.className='cline'; d.textContent=lineText(e);
+    box.appendChild(d); box.scrollTop=box.scrollHeight;
+  }
+  function finish(){
+    var sp=document.getElementById('spinner'); if(sp) sp.classList.add('stopped');
+    setText('status','complete');
+    var link=document.getElementById('reportlink'); if(link) link.style.display='inline-block';
+    if(es){ es.close(); es=null; }
+  }
+  function applySnapshot(s){
+    if(!s) return;
+    if(s.eta){
+      elapsedBase=s.eta.elapsed||0; elapsedStart=Date.now();
+      document.getElementById('bar').style.width=Math.round((s.eta.fraction||0)*100)+'%';
+      if(s.done) setText('eta','complete');
+      else if(s.eta.state==='estimating') setText('eta','estimating…');
+      else if(s.eta.remaining!=null) setText('eta','~ '+fmtDur(s.eta.remaining)+' remaining (estimated)');
+    }
+    setText('step', s.current_step ? ('current: '+s.current_step) : (s.done?'':'starting…'));
+    setText('steps', (s.steps_done||0)+' / '+(s.steps_total||'?')+' steps');
+    setText('hosts', (s.hosts_done||0)+' hosts');
+    if(s.findings){ ['critical','high','medium','low','info'].forEach(function(k){ setText('f-'+k, s.findings[k]||0); }); }
+    if(s.log){ s.log.forEach(addLine); }
+    if(s.done) finish();
+  }
+  function connect(){
+    if(!window.EventSource){ document.getElementById('nojs').style.display='block'; return; }
+    es=new EventSource('/events/'+encodeURIComponent(RUN_ID));
+    ['snapshot','tick'].forEach(function(t){
+      es.addEventListener(t,function(ev){ try{ applySnapshot(JSON.parse(ev.data)); }catch(e){} }); });
+    ['run.start','step.start','step.done','step.skip','step.refuse','run.done','log'].forEach(function(t){
+      es.addEventListener(t,function(ev){ try{ var d=JSON.parse(ev.data); d.event=t; addLine(d); }catch(e){} }); });
+    es.addEventListener('done',function(ev){ try{ applySnapshot(JSON.parse(ev.data)); }catch(e){} finish(); });
+    // EventSource auto-reconnects on transient errors; nothing to do in onerror.
+  }
+
+  setInterval(function(){ setText('elapsed', fmtDur(elapsedBase+(Date.now()-elapsedStart)/1000)); }, 1000);
+  if(SNAP) applySnapshot(SNAP);
+  connect();
+})();
+</script>
+{% endblock %}

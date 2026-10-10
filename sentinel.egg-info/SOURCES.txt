@@ -15,6 +15,11 @@ core/hardware/__init__.py
 core/hardware/base.py
 core/hardware/mock.py
 dashboard/__init__.py
+dashboard/app.py
+dashboard/auth.py
+dashboard/cli.py
+dashboard/config.py
+dashboard/state.py
 display/__init__.py
 plugins/__init__.py
 plugins/blue/__init__.py
@@ -24,6 +29,10 @@ plugins/ml/detector_template.py
 plugins/red/__init__.py
 plugins/red/recon_nmap.py
 reporting/__init__.py
+reporting/history.py
+reporting/remediation.py
+reporting/report_engine.py
+reporting/risk.py
 sentinel.egg-info/PKG-INFO
 sentinel.egg-info/SOURCES.txt
 sentinel.egg-info/dependency_links.txt

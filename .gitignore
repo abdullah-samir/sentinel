@@ -8,3 +8,7 @@ captures/
 *.pcap
 data/models/*.pkl
 __pycache__/
+# Dashboard auth config — holds the admin password hash + session secret. NEVER commit.
+data/dashboard.json
+*dashboard*secret*
+.env

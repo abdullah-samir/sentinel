@@ -22,7 +22,7 @@ from core.config import Config
 from core.context import RunContext
 from core.events import EventBus
 from core.hardware import build_hardware
-from core.schema import RunResult, Severity, make_run_id, utcnow_iso
+from core.schema import RunResult, SEVERITY_RANK, Severity, make_run_id, utcnow_iso
 from core.store import Store
 from core.workflows import steps_for
 
@@ -95,17 +95,35 @@ def _plan_steps(config: Config, step_names: List[str]) -> List[str]:
     return planned
 
 
+def _sev_counts(store) -> dict:
+    """Current findings-by-severity from the store (for live event payloads)."""
+    counts = {k: 0 for k in SEVERITY_RANK}
+    for f in store.findings():
+        s = str(getattr(f, "severity", "info"))
+        if s in counts:
+            counts[s] += 1
+    return counts
+
+
 def run_workflow(
     workflow: str,
     target: Optional[str],
     config: Optional[Config] = None,
     authorized: bool = False,
+    events: Optional[EventBus] = None,
+    run_id: Optional[str] = None,
 ) -> Store:
     """Execute `workflow` against `target` and return the saved Store.
 
     `authorized` is the per-invocation confirmation (the `--i-am-authorized`
     flag). It is OR'd with SENTINEL_AUTHORIZED=1 and then AND'd with
     `config.authorized_lab` to gate offensive modules.
+
+    `events` lets a caller (e.g. the dashboard) pass in a shared EventBus to
+    observe progress; `run_id` lets it pre-assign the id so it can scope that
+    observation. Both are optional and change no control flow — when omitted the
+    orchestrator behaves exactly as before. Event payloads carry live detail
+    (step index/total, findings-by-severity + asset count) for a live view.
     """
     config = config or Config.from_env()
     config.ensure_dirs()
@@ -129,13 +147,13 @@ def run_workflow(
 
     # 5. build run state
     run = RunResult(
-        run_id=make_run_id(workflow, norm_target),
+        run_id=run_id or make_run_id(workflow, norm_target),
         workflow=workflow,
         target=norm_target,
         started_at=utcnow_iso(),
     )
     store = Store(run, config.results_dir / f"{run.run_id}.json")
-    events = EventBus()
+    events = events or EventBus()
     ctx = RunContext(
         target=norm_target,
         workflow=workflow,
@@ -150,12 +168,14 @@ def run_workflow(
 
     log.info("run %s: workflow=%s target=%r steps=%s",
              run.run_id, workflow, norm_target or "(none)", planned)
-    events.publish("run.start", run.run_id)
+    total = len(planned)
+    events.publish("run.start", {"run_id": run.run_id, "workflow": workflow,
+                                 "target": norm_target, "steps_total": total})
     store.save()  # write an initial file immediately
 
     # 6. execute each step
     reg = registry.all_modules()
-    for name in planned:
+    for index, name in enumerate(planned, 1):
         cls = reg[name]
         try:
             module = cls()
@@ -167,9 +187,11 @@ def run_workflow(
                 detail=str(e), tags=["orchestrator"],
             )
             store.save()
+            events.publish("step.skip", {"name": name, "index": index, "total": total,
+                                         "status": "error"})
             continue
 
-        events.publish("step.start", name)
+        events.publish("step.start", {"name": name, "index": index, "total": total})
 
         # availability
         try:
@@ -184,7 +206,8 @@ def run_workflow(
                 detail=f"skipped: {reason}", tags=["orchestrator", "skipped"],
             )
             store.save()
-            events.publish("step.skip", name)
+            events.publish("step.skip", {"name": name, "index": index, "total": total,
+                                         "status": "skipped", "reason": reason})
             continue
 
         # offensive double-gate
@@ -198,7 +221,8 @@ def run_workflow(
                 detail=msg, tags=["orchestrator", "refused", "offensive"],
             )
             store.save()
-            events.publish("step.refuse", name)
+            events.publish("step.refuse", {"name": name, "index": index, "total": total,
+                                           "status": "refused"})
             continue
 
         # run
@@ -213,12 +237,18 @@ def run_workflow(
                 detail=str(e), tags=["orchestrator", "error"],
             )
         store.save()  # checkpoint after each step
-        events.publish("step.done", name)
+        events.publish("step.done", {"name": name, "index": index, "total": total,
+                                     "status": "done",
+                                     "findings_by_severity": _sev_counts(store),
+                                     "assets": len(store.assets())})
 
     # 7. finalize
     run.finished_at = utcnow_iso()
     run.compute_stats()
     store.save()
-    events.publish("run.done", run.run_id)
+    events.publish("run.done", {"run_id": run.run_id,
+                                "findings_by_severity": run.stats.get("findings_by_severity", {}),
+                                "assets": run.stats.get("assets_total", 0),
+                                "findings_total": run.stats.get("findings_total", 0)})
     log.info("run %s complete: %s", run.run_id, run.stats)
     return store

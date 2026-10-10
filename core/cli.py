@@ -241,6 +241,19 @@ def cmd_analyze(args) -> int:
 
 
 # --------------------------------------------------------------------------
+# subcommands: dashboard (thin dispatch into the dashboard package)
+# --------------------------------------------------------------------------
+def cmd_dashboard(args) -> int:
+    from dashboard.cli import dashboard
+    return dashboard(host=args.host, port=args.port)
+
+
+def cmd_dashboard_setpass(args) -> int:
+    from dashboard.cli import setpass
+    return setpass()
+
+
+# --------------------------------------------------------------------------
 # argument parser
 # --------------------------------------------------------------------------
 def build_parser() -> argparse.ArgumentParser:
@@ -300,6 +313,14 @@ def build_parser() -> argparse.ArgumentParser:
     pa = sub.add_parser("analyze", help="analyze an existing pcap (offline)")
     pa.add_argument("pcap", help="path to a .pcap/.pcapng file")
     pa.set_defaults(func=cmd_analyze)
+
+    pdash = sub.add_parser("dashboard", help="launch the web dashboard (needs auth)")
+    pdash.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1)")
+    pdash.add_argument("--port", type=int, default=8000, help="port (default 8000)")
+    pdash.set_defaults(func=cmd_dashboard)
+
+    pset = sub.add_parser("dashboard-setpass", help="set the dashboard admin password")
+    pset.set_defaults(func=cmd_dashboard_setpass)
     return p
 
 

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Modules{% endblock %}
+{% block content %}
+<h1>Modules &amp; workflows</h1>
+
+<div class="panel">
+  <h2>Discovered modules ({{ modules|length }})</h2>
+  <table>
+    <thead><tr><th>Phase</th><th>Name</th><th>Display</th><th>Category</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for m in modules %}
+      <tr>
+        <td>{{ m.phase }}</td>
+        <td class="mono">{{ m.name }}{% if m.offensive %} <span class="pill"
+            style="background:#3a1d1d;color:#E5484D">offensive</span>{% endif %}</td>
+        <td>{{ m.display }}</td>
+        <td class="muted">{{ m.category }}</td>
+        <td>{% if m.available %}<span class="pill" style="background:#13342f;color:#2DD4BF">available</span>
+            {% else %}<span class="pill" style="background:#2a2030;color:#8B98AB">unavailable</span>
+            <span class="muted">{{ m.reason }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>Workflows</h2>
+  {% if workflows %}
+  <table>
+    <thead><tr><th>Workflow</th><th>Steps</th></tr></thead>
+    <tbody>
+      {% for name, steps in workflows.items() %}
+      <tr><td class="mono">{{ name }}</td><td class="mono">{{ steps | join(', ') }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<div class="empty">No workflows defined.</div>{% endif %}
+</div>
+{% endblock %}
