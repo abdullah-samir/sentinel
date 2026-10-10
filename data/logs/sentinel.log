@@ -484,3 +484,8 @@
 2026-10-10 17:14:20,472 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
 2026-10-10 17:14:51,471 INFO    sentinel.run: capture: done — iface=wlan0 packets=585 bytes=284340 duration=31.0s stop=duration
 2026-10-10 17:14:55,661 INFO    sentinel.orchestrator: run 2026-10-10_14-14_capture-only_10.10.1.0-24_16a4ca complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-10 22:31:10,538 INFO    sentinel.orchestrator: run 2026-10-10_19-31_capture-only_be4b9f: workflow=capture_only target='(none)' steps=['blue.capture_tshark']
+2026-10-10 22:31:10,577 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-10 22:31:10,584 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
+2026-10-10 22:31:45,204 INFO    sentinel.run: capture: done — iface=wlan0 packets=1364 bytes=326532 duration=34.6s stop=duration
+2026-10-10 22:31:49,847 INFO    sentinel.orchestrator: run 2026-10-10_19-31_capture-only_be4b9f complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}

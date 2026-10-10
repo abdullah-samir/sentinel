@@ -1,0 +1,19 @@
+[Unit]
+Description=Sentinel dashboard (FastAPI, full control)
+Documentation=file:/home/sentinel/sentinel/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sentinel
+Group=sentinel
+WorkingDirectory=/home/sentinel/sentinel
+# Ops flags (e.g. SENTINEL_DASH_READONLY). Secrets live in data/dashboard.json.
+EnvironmentFile=/home/sentinel/sentinel/deploy/sentinel.env
+ExecStart=/home/sentinel/sentinel/venv/bin/sentinel dashboard --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -6,13 +6,14 @@
 * Sessions: a signed, tamper-proof token (HMAC-SHA256 over "user|issued").
 * CSRF: double-submit token (random cookie value echoed in a hidden form field;
   verified equal server-side).
-* Rate limiting: in-memory per-IP sliding window of failed logins.
+* Lockout: in-memory per-IP brute-force lockout (N fails -> cooldown), logged.
 """
 from __future__ import annotations
 
 import base64
 import hashlib
 import hmac
+import logging
 import secrets
 import time
 from collections import defaultdict
@@ -83,23 +84,62 @@ def csrf_ok(cookie_token: Optional[str], form_token: Optional[str]) -> bool:
     return hmac.compare_digest(cookie_token, form_token)
 
 
-# --- failed-login rate limiting (in-memory, per IP) -----------------------
+# --- failed-login lockout (in-memory, per IP) -----------------------------
 class RateLimiter:
-    def __init__(self, max_fails: int = 5, window: int = 300) -> None:
-        self.max_fails = max_fails
-        self.window = window
-        self._fails: Dict[str, List[float]] = defaultdict(list)
+    """Brute-force lockout. After `max_fails` failed logins within `window`, the
+    IP is locked for `cooldown` seconds (optionally with exponential backoff on
+    repeat lockouts). Every lockout is logged. In-memory, no dependencies.
 
-    def _prune(self, ip: str, now: float) -> None:
-        self._fails[ip] = [t for t in self._fails[ip] if now - t < self.window]
+    `clock` is injectable so tests can advance time deterministically.
+    """
+
+    def __init__(self, max_fails: int = 5, cooldown: int = 15 * 60,
+                 window: int = 15 * 60, backoff: bool = False,
+                 clock=None, logger: Optional["logging.Logger"] = None) -> None:
+        self.max_fails = max_fails
+        self.cooldown = cooldown
+        self.window = window
+        self.backoff = backoff
+        self._clock = clock or time.time
+        self._log = logger or logging.getLogger("sentinel.dashboard.auth")
+        self._fails: Dict[str, List[float]] = defaultdict(list)
+        self._locked_until: Dict[str, float] = {}
+        self._lockouts: Dict[str, int] = defaultdict(int)
 
     def blocked(self, ip: str) -> bool:
-        now = time.time()
-        self._prune(ip, now)
-        return len(self._fails[ip]) >= self.max_fails
+        """True while `ip` is in its lockout cooldown. Clears the lock (and the
+        failure history) once the cooldown has elapsed."""
+        until = self._locked_until.get(ip)
+        if until is None:
+            return False
+        if self._clock() < until:
+            return True
+        self._locked_until.pop(ip, None)
+        self._fails.pop(ip, None)
+        return False
 
     def record_failure(self, ip: str) -> None:
-        self._fails[ip].append(time.time())
+        now = self._clock()
+        fails = [t for t in self._fails[ip] if now - t < self.window]
+        fails.append(now)
+        self._fails[ip] = fails
+        if len(fails) >= self.max_fails:
+            self._lockouts[ip] += 1
+            factor = (2 ** (self._lockouts[ip] - 1)) if self.backoff else 1
+            duration = self.cooldown * factor
+            self._locked_until[ip] = now + duration
+            self._fails[ip] = []
+            self._log.warning(
+                "login lockout: ip=%s locked %ds after %d failed attempts (lockout #%d)",
+                ip, int(duration), self.max_fails, self._lockouts[ip])
+
+    def locked_for(self, ip: str) -> int:
+        """Seconds remaining on the lockout (0 if not locked)."""
+        until = self._locked_until.get(ip)
+        return max(0, int(until - self._clock())) if until else 0
 
     def reset(self, ip: str) -> None:
+        """Clear failures + lockout for `ip` (called on a successful login)."""
         self._fails.pop(ip, None)
+        self._locked_until.pop(ip, None)
+        self._lockouts.pop(ip, None)

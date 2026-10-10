@@ -195,8 +195,9 @@ def create_app(core_config: Optional[Config] = None,
         if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
             return render("login.html", request, error="Invalid request (CSRF). Try again.")
         if limiter.blocked(ip):
+            mins = limiter.locked_for(ip) // 60 + 1
             return render("login.html", request,
-                          error="Too many failed attempts — wait a few minutes.")
+                          error=f"Too many failed attempts — this IP is locked for ~{mins} min.")
         user = form.get("username", "")
         password = form.get("password", "")
         if (user == dash_config.user and dash_config.password_hash

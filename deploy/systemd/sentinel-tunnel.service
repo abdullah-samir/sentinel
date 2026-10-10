@@ -1,0 +1,20 @@
+[Unit]
+Description=Sentinel ngrok tunnel (public URL for the dashboard)
+Documentation=file:/home/sentinel/sentinel/deploy/README.md
+Requires=sentinel-dashboard.service
+After=sentinel-dashboard.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sentinel
+Group=sentinel
+WorkingDirectory=/home/sentinel/sentinel
+# ngrok must be installed and its authtoken configured for user `sentinel`
+# (`ngrok config add-authtoken <TOKEN>`); the reserved domain is the free static URL.
+ExecStart=/usr/bin/env ngrok http --url=casing-moving-cactus.ngrok-free.dev 8000
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

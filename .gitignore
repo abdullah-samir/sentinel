@@ -12,3 +12,5 @@ __pycache__/
 data/dashboard.json
 *dashboard*secret*
 .env
+# Deployment env file (ops flags; may later hold secrets) — keep the .example committed.
+deploy/sentinel.env
