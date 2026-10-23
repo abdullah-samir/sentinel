@@ -12,32 +12,36 @@
     --mono:ui-monospace, Menlo, Consolas, monospace;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
-       line-height:1.5;font-size:15px}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:15px}
   a{color:var(--teal);text-decoration:none}
   a:hover{text-decoration:underline}
-  .wrap{max-width:1100px;margin:0 auto;padding:20px 16px 56px}
-  header.nav{display:flex;align-items:center;gap:18px;border-bottom:1px solid var(--border);
-       padding:14px 16px;background:var(--panel)}
-  header.nav .brand{font-weight:800;letter-spacing:.3px;font-size:18px}
-  header.nav .brand .dot{color:var(--teal)}
-  header.nav a.navlink{color:var(--muted);font-size:14px}
-  header.nav a.navlink:hover,header.nav a.navlink.active{color:var(--ink)}
-  header.nav .spacer{margin-left:auto}
-  header.nav form{margin:0}
-  .btn{background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:8px;
-       padding:8px 13px;font:inherit;cursor:pointer}
-  .btn:hover{border-color:var(--teal)}
-  .btn.primary{background:var(--teal);color:#0E1420;border-color:var(--teal);font-weight:700}
-  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
-  h1{font-size:20px;margin:6px 0 16px}
+  .app{display:flex;min-height:100vh}
+  .sidebar{width:210px;flex:none;background:var(--panel);border-right:1px solid var(--border);
+       padding:16px 12px;display:flex;flex-direction:column;gap:4px}
+  .sidebar .brand{font-weight:800;font-size:18px;letter-spacing:.3px;padding:6px 10px 14px}
+  .sidebar .brand .dot{color:var(--teal)}
+  .sidebar a.nav{display:block;color:var(--muted);padding:9px 11px;border-radius:8px;font-size:14px}
+  .sidebar a.nav:hover{color:var(--ink);background:var(--bg);text-decoration:none}
+  .sidebar a.nav.active{color:var(--ink);background:var(--bg);box-shadow:inset 3px 0 0 var(--teal)}
+  .sidebar .grow{flex:1}
+  .sidebar .who{color:var(--muted);font-size:12px;padding:6px 10px}
+  .main{flex:1;min-width:0;padding:22px 20px 56px;max-width:1120px}
+  h1{font-size:20px;margin:4px 0 16px}
   h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin:0 0 10px}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+  .btn{background:var(--bg);border:1px solid var(--border);color:var(--ink);border-radius:8px;
+       padding:8px 13px;font:inherit;cursor:pointer;display:inline-block}
+  .btn:hover{border-color:var(--teal);text-decoration:none}
+  .btn.primary{background:var(--teal);color:#0E1420;border-color:var(--teal);font-weight:700}
+  .btn.danger{border-color:#512;color:#E5484D}
+  .btn.sm{padding:4px 9px;font-size:12px}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
   th{color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.08em}
   td.mono,.mono{font-family:var(--mono);word-break:break-word}
-  input,select{background:var(--bg);border:1px solid var(--border);color:var(--ink);
+  input,select,textarea{background:var(--bg);border:1px solid var(--border);color:var(--ink);
        border-radius:8px;padding:9px 11px;font:inherit}
+  label{font-size:13px}
   .muted{color:var(--muted)}
   .pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700}
   .gbadge{font-weight:800;border-radius:7px;padding:2px 9px;color:#0E1420;font-size:13px}
@@ -47,28 +51,48 @@
   .banner.warn{border-left-color:var(--orange)}
   .banner.err{border-left-color:var(--red)}
   .empty{color:var(--muted);text-align:center;padding:40px 0}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .card .n{font-size:24px;font-weight:800}
+  .card .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
   footer{color:var(--muted);font-size:12px;margin-top:26px}
+  @media (max-width:760px){
+    .app{flex-direction:column}
+    .sidebar{width:auto;flex-direction:row;flex-wrap:wrap;align-items:center;border-right:0;
+         border-bottom:1px solid var(--border);padding:10px}
+    .sidebar .brand{padding:6px 10px}
+    .sidebar .grow,.sidebar .who{display:none}
+    .sidebar a.nav.active{box-shadow:inset 0 -3px 0 var(--teal)}
+  }
 </style>
 </head>
 <body>
+<div class="app">
 {% block nav %}
-<header class="nav">
-  <span class="brand">Sentinel<span class="dot">.</span></span>
-  {% if user %}
-  <a class="navlink" href="/">Overview</a>
-  <a class="navlink" href="/modules">Modules</a>
-  <span class="spacer"></span>
-  <span class="muted" style="font-size:13px">{{ user }}</span>
-  <form method="post" action="/logout">
-    <input type="hidden" name="csrf" value="{{ csrf_token }}">
-    <button class="btn" type="submit">Log out</button>
-  </form>
-  {% endif %}
-</header>
+  <aside class="sidebar">
+    <div class="brand">Sentinel<span class="dot">.</span></div>
+    {% if user %}
+    <a class="nav {{ 'active' if nav_active == 'overview' }}" href="/">Overview</a>
+    <a class="nav {{ 'active' if nav_active == 'scan' }}" href="/scan">Scan</a>
+    <a class="nav {{ 'active' if nav_active == 'schedule' }}" href="/schedule">Schedule</a>
+    <a class="nav {{ 'active' if nav_active == 'runs' }}" href="/runs">Runs</a>
+    <a class="nav {{ 'active' if nav_active == 'assets' }}" href="/assets">Assets</a>
+    <a class="nav {{ 'active' if nav_active == 'modules' }}" href="/modules">Modules</a>
+    <a class="nav {{ 'active' if nav_active == 'settings' }}" href="/settings">Settings</a>
+    <a class="nav" href="/health" target="_blank" rel="noopener">Health &#8599;</a>
+    <div class="grow"></div>
+    <div class="who">{{ user }}</div>
+    <form method="post" action="/logout" style="margin:0;padding:0 6px">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button class="btn sm" type="submit">Log out</button>
+    </form>
+    {% endif %}
+  </aside>
 {% endblock %}
-<div class="wrap">
-  {% block content %}{% endblock %}
-  <footer>Sentinel v{{ version }} · local dashboard</footer>
+  <main class="main">
+    {% block content %}{% endblock %}
+    <footer>Sentinel v{{ version }} · local dashboard</footer>
+  </main>
 </div>
 </body>
 </html>

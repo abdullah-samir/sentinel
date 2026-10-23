@@ -9,8 +9,11 @@ admin password is mandatory** (see Security below).
 - `sentinel-dashboard.service` — the FastAPI dashboard, as user `sentinel`, from
   the venv, bound to `127.0.0.1:8000`, `Restart=on-failure`. Reads ops flags from
   `deploy/sentinel.env`.
-- `sentinel-tunnel.service` — `ngrok http --url=casing-moving-cactus.ngrok-free.dev 8000`,
+- `sentinel-tunnel.service` — `ngrok http --url=casing-moving-cactus.ngrok-free.dev 127.0.0.1:8000`,
   `Requires=`/`After=` the dashboard, `Restart=on-failure`.
+- **IPv4 upstream (do not revert):** the tunnel targets `127.0.0.1:8000`, not a bare `8000`/`localhost` —
+  ngrok resolves `localhost` to IPv6 `[::1]:8000` while the dashboard binds IPv4, which fails with
+  `ERR_NGROK_8012` (connection refused). Keep it explicit IPv4.
 - Public URL: **https://casing-moving-cactus.ngrok-free.dev**
 
 ## Prerequisites

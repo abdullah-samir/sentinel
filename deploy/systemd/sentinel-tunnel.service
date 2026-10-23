@@ -12,7 +12,10 @@ Group=sentinel
 WorkingDirectory=/home/sentinel/sentinel
 # ngrok must be installed and its authtoken configured for user `sentinel`
 # (`ngrok config add-authtoken <TOKEN>`); the reserved domain is the free static URL.
-ExecStart=/usr/bin/env ngrok http --url=casing-moving-cactus.ngrok-free.dev 8000
+# Upstream is the EXPLICIT IPv4 127.0.0.1:8000 — a bare "8000"/"localhost:8000" makes
+# ngrok resolve to IPv6 [::1]:8000 and fail with ERR_NGROK_8012 (connection refused),
+# because the dashboard binds IPv4 127.0.0.1. Do not change back to a bare port.
+ExecStart=/usr/bin/env ngrok http --url=casing-moving-cactus.ngrok-free.dev 127.0.0.1:8000
 Restart=on-failure
 RestartSec=10
 

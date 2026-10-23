@@ -8,15 +8,23 @@ UNITS=(sentinel-dashboard.service sentinel-tunnel.service)
 ENV_FILE="$HERE/sentinel.env"
 ENV_EXAMPLE="$HERE/sentinel.env.example"
 PUBLIC_URL="https://casing-moving-cactus.ngrok-free.dev"
+UPSTREAM="http://127.0.0.1:8000"          # dashboard bind; the tunnel's IPv4 upstream
+
+copy_units() {  # copy the corrected unit files into place and reload systemd
+  for u in "${UNITS[@]}"; do
+    sudo cp "$HERE/systemd/$u" "/etc/systemd/system/$u"
+  done
+  sudo systemctl daemon-reload
+}
 
 usage() {
   cat <<EOF
 sentinel-ctl.sh <command>
 
   install   copy unit files to /etc/systemd/system, daemon-reload, enable both (sudo)
-  status    show both services and the public URL
+  status    show both services, the upstream health check, and the public URL
   logs      tail both service logs (journalctl -f)
-  restart   restart both services (sudo)
+  restart   re-copy units + daemon-reload, then restart both services (sudo)
   full      full control: SENTINEL_DASH_READONLY=0 + restart dashboard (default)
   safe      view-only:     SENTINEL_DASH_READONLY=1 + restart dashboard
 
@@ -50,10 +58,7 @@ PY
 case "${1:-}" in
   install)
     ensure_env
-    for u in "${UNITS[@]}"; do
-      sudo cp "$HERE/systemd/$u" "/etc/systemd/system/$u"
-    done
-    sudo systemctl daemon-reload
+    copy_units
     sudo systemctl enable "${UNITS[@]}"
     echo "Installed and enabled (will start on boot)."
     if ! password_set; then
@@ -66,12 +71,16 @@ case "${1:-}" in
   status)
     systemctl --no-pager --full status "${UNITS[@]}" || true
     echo
+    code="$(curl -s -o /dev/null -w '%{http_code}' "$UPSTREAM/health" 2>/dev/null || echo 000)"
+    echo "Upstream ($UPSTREAM/health, what the tunnel dials): HTTP $code"
+    [ "$code" = "200" ] || echo "  ^ not 200 => ngrok would fail (ERR_NGROK_8012). Is the dashboard up on IPv4?"
     echo "Public URL: $PUBLIC_URL"
     ;;
   logs)
     journalctl -u sentinel-dashboard.service -u sentinel-tunnel.service -f
     ;;
   restart)
+    copy_units                      # re-copy corrected units + daemon-reload first
     sudo systemctl restart "${UNITS[@]}"
     echo "restarted ${UNITS[*]}"
     ;;

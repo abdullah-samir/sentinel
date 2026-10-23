@@ -13,10 +13,17 @@ from dashboard.live import LiveRun
 
 
 class RunState:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
+    def __init__(self, lock=None) -> None:
+        # A re-entrant lock lets the scheduler hold it while calling try_start
+        # (check-and-set). The SAME lock object is shared with the Scheduler so
+        # "is a run active? -> start it" is atomic across web + scheduler.
+        self._lock = lock or threading.RLock()
         self._active = False
         self._live: Optional[LiveRun] = None     # current or most-recent run
+
+    @property
+    def lock(self):
+        return self._lock
 
     def try_start(self, workflow: str, target: str,
                   run_id: Optional[str] = None) -> Optional[LiveRun]:
@@ -32,6 +39,12 @@ class RunState:
     def finish(self) -> None:
         """Free the run slot. The LiveRun is kept (now done) so a refresh still
         shows the completed state + report link."""
+        with self._lock:
+            self._active = False
+
+    def reset_stale(self) -> None:
+        """Clear a stale 'run in progress' flag at startup (no run is actually
+        running in a freshly-started process)."""
         with self._lock:
             self._active = False
 

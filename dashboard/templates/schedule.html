@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "scan.html" import field with context %}
+{% block title %}Schedule{% endblock %}
+{% block content %}
+<h1>Scheduled scans</h1>
+
+{% if msg == 'created' %}<div class="banner">Schedule created.</div>{% endif %}
+{% if msg == 'deleted' %}<div class="banner">Schedule deleted.</div>{% endif %}
+
+<div class="panel">
+  <h2>New schedule</h2>
+  <form method="get" action="/schedule" class="toolbar" style="margin:0 0 8px">
+    <label>Workflow&nbsp;
+      <select name="workflow" onchange="this.form.submit()">
+        {% for wf in workflows %}<option value="{{ wf }}" {{ 'selected' if wf == workflow }}>{{ wf }}{% if offensive[wf] %} (offensive){% endif %}</option>{% endfor %}
+      </select>
+    </label>
+    <noscript><button class="btn sm" type="submit">Load</button></noscript>
+  </form>
+
+  {% if readonly %}
+    <div class="banner warn">Read-only mode — scheduling is disabled.</div>
+  {% elif sel_offensive %}
+    <div class="banner err">Offensive workflows cannot be scheduled from the dashboard
+      (the lab-authorization gate must be confirmed per run).</div>
+  {% else %}
+  <form method="post" action="/schedule">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="workflow" value="{{ workflow }}">
+    <div style="margin-bottom:12px">
+      <label style="display:block;font-weight:600;font-size:13px">Target</label>
+      <input name="target" placeholder="IP / CIDR / host (blank = auto /24)" style="min-width:280px">
+    </div>
+    <fieldset style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+      <legend class="muted" style="font-size:12px;padding:0 6px">When</legend>
+      <label style="display:block;margin-bottom:6px"><input type="radio" name="kind" value="interval" checked> Every
+        <input type="number" name="every_hours" value="24" min="1" max="168" style="width:80px"> hours</label>
+      <label style="display:block"><input type="radio" name="kind" value="daily"> Daily at
+        <input type="time" name="at" value="03:00"> <span class="muted" style="font-size:12px">(Pi local time)</span></label>
+    </fieldset>
+    {% for mod, specs in option_groups %}
+    <fieldset style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+      <legend class="muted" style="font-size:12px;padding:0 6px">{{ mod }}</legend>
+      {% for spec in specs %}{{ field(spec) }}{% endfor %}
+    </fieldset>
+    {% endfor %}
+    <button class="btn primary" type="submit">Create schedule</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>Schedules ({{ schedules|length }})</h2>
+  {% if schedules %}
+  <table>
+    <thead><tr><th>Workflow</th><th>Target</th><th>When</th><th>Next run</th><th>Last result</th><th></th></tr></thead>
+    <tbody>
+      {% for s in schedules %}
+      <tr>
+        <td>{{ s.workflow }}</td>
+        <td class="mono">{{ s.target or "(auto)" }}</td>
+        <td>{% if s.kind == 'daily' %}daily at {{ s.at }}{% else %}every {{ s.every_hours }}h{% endif %}</td>
+        <td class="mono">{{ s.next_run_iso }}</td>
+        <td>{% if s.last_run_id %}<a href="/run/{{ s.last_run_id }}">view</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          {% if not readonly %}
+          <form method="post" action="/schedule/{{ s.id }}/delete" onsubmit="return confirm('Delete this schedule?')">
+            <input type="hidden" name="csrf" value="{{ csrf_token }}">
+            <button class="btn danger sm" type="submit">Delete</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No schedules yet.</div>
+  {% endif %}
+</div>
+{% endblock %}

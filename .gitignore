@@ -14,3 +14,6 @@ data/dashboard.json
 .env
 # Deployment env file (ops flags; may later hold secrets) — keep the .example committed.
 deploy/sentinel.env
+# Dashboard runtime state (schedules + persisted settings).
+data/schedules.json
+data/dashboard_settings.json

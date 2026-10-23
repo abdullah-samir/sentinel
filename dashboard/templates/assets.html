@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Assets{% endblock %}
+{% block content %}
+<h1>Assets ({{ hosts|length }})</h1>
+<div class="panel">
+  {% if hosts %}
+  <div class="toolbar"><input id="search" placeholder="filter hosts…"
+       oninput="var q=this.value.toLowerCase();document.querySelectorAll('#assets tr.hrow').forEach(function(t){t.style.display=t.textContent.toLowerCase().indexOf(q)!=-1?'':'none'})"
+       style="min-width:200px"></div>
+  <table id="assets">
+    <thead><tr>
+      <th>IP</th><th>MAC / vendor</th><th>Hostname</th><th>Open ports</th>
+      <th>Worst</th><th>Seen</th><th>Last seen</th>
+    </tr></thead>
+    <tbody>
+      {% for h in hosts %}
+      <tr class="hrow">
+        <td class="mono"><a href="/assets/{{ h.key }}">{{ h.ip }}</a>
+          {% if h.ips|length > 1 %}<div class="muted" style="font-size:11px">{{ h.ips|join(', ') }}</div>{% endif %}</td>
+        <td class="mono">{{ h.mac or "—" }}{% if h.vendor %}<div class="muted" style="font-size:11px">{{ h.vendor }}</div>{% endif %}</td>
+        <td class="mono">{{ h.hostname or "—" }}</td>
+        <td class="mono">{{ h.open_ports|join(', ') if h.open_ports else "—" }}</td>
+        <td><span class="sev" style="color:{{ sev_color[h.worst] }}">{{ h.worst }}</span></td>
+        <td>{{ h.times_seen }}</td>
+        <td class="mono">{{ h.last_seen }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No hosts discovered yet. Run a recon scan to populate this.</div>
+  {% endif %}
+</div>
+{% endblock %}

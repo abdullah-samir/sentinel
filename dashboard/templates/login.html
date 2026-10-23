@@ -1,11 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Sign in{% endblock %}
-{% block nav %}
-<header class="nav"><span class="brand">Sentinel<span class="dot">.</span></span></header>
-{% endblock %}
+{% block nav %}{% endblock %}
 {% block content %}
 <div class="panel" style="max-width:380px;margin:48px auto">
-  <h1 style="text-align:center">Sign in</h1>
+  <h1 style="text-align:center">Sentinel<span style="color:var(--teal)">.</span> — sign in</h1>
   {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
   <form method="post" action="/login">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">

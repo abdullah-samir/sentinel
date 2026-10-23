@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Overview{% endblock %}
+{% block title %}{{ 'Overview' if show_stats else 'Runs' }}{% endblock %}
 {% macro sorth(key, label) %}
   {% set nd = 'asc' if (sort == key and direction == 'desc') else 'desc' %}
   <th class="sortable"{% if sort == key %} aria-sort="{{ 'descending' if direction == 'desc' else 'ascending' }}"{% endif %}>
@@ -10,12 +10,20 @@
 <style>
   .pulse-dot{animation:pulse 1.3s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
-  th.sortable a{color:var(--muted);text-decoration:none}
-  th.sortable a:hover{color:var(--ink)}
+  th.sortable a{color:var(--muted)} th.sortable a:hover{color:var(--ink)}
   th[aria-sort] a{color:var(--teal)}
+  details.rowactions summary{cursor:pointer;color:var(--muted);list-style:none}
+  details.rowactions[open] summary{color:var(--ink)}
+  details.rowactions .pop{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 </style>
-<h1>Overview</h1>
 
+<h1>{{ 'Overview' if show_stats else 'Runs' }}</h1>
+
+{% if msg_deleted is not none %}
+<div class="banner">Deleted {{ msg_deleted }} run(s){% if msg_failed and msg_failed != '0' %},
+  {{ msg_failed }} failed{% endif %}.</div>
+{% endif %}
 {% if started %}<div class="banner">Scan started — results will appear here when it finishes.</div>{% endif %}
 {% if active %}
 <div class="banner warn">
@@ -25,62 +33,98 @@
 </div>
 {% endif %}
 
-<div class="panel">
-  <h2>Run a scan</h2>
-  {% if readonly %}
-    <p class="muted">Read-only mode — scan controls are disabled.</p>
-  {% elif active %}
-    <p class="muted">A scan is already running — <a href="/run/{{ active.run_id }}/live">watch it live</a>.</p>
-  {% else %}
-  <form method="post" action="/run/{{ workflows[0] if workflows else '' }}" id="runform"
-        style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-    <input type="hidden" name="csrf" value="{{ csrf_token }}">
-    <select name="__wf" id="wf" onchange="document.getElementById('runform').action='/run/'+this.value">
-      {% for wf in workflows %}<option value="{{ wf }}">{{ wf }}</option>{% endfor %}
-    </select>
-    <input name="target" placeholder="target IP/CIDR/host (blank = auto /24)" style="flex:1;min-width:220px">
-    <button class="btn primary" type="submit">Start scan</button>
-  </form>
-  <p class="muted" style="font-size:12px;margin:8px 0 0">
-    Offensive workflows still require the lab-authorization gate; the dashboard does not bypass it.</p>
-  {% endif %}
+{% if show_stats and stat_cards %}
+<div class="cards">
+  <div class="card"><div class="n">{{ stat_cards.runs }}</div><div class="l">Runs</div></div>
+  <div class="card"><div class="n">{{ stat_cards.hosts }}</div><div class="l">Hosts seen</div></div>
+  <div class="card">
+    <div class="n">{% for s in sev_order %}{% if stat_cards.by_severity[s] %}<span
+      style="color:{{ sev_color[s] }}">{{ stat_cards.by_severity[s] }}</span>{% if not loop.last %}<span class="muted" style="font-size:16px"> </span>{% endif %}{% endif %}{% endfor %}
+      {% if stat_cards.by_severity.values()|sum == 0 %}0{% endif %}</div>
+    <div class="l">Findings (c/h/m/l/i)</div></div>
+  <div class="card">
+    <div class="n"><span class="gbadge" style="background:{{ grade_color.get(stat_cards.latest_grade, '#8B98AB') }}">{{ stat_cards.latest_grade }}</span>
+      <span class="muted" style="font-size:14px">/ worst</span>
+      <span class="gbadge" style="background:{{ grade_color.get(stat_cards.worst_grade, '#8B98AB') }}">{{ stat_cards.worst_grade }}</span></div>
+    <div class="l">Latest / worst grade</div></div>
 </div>
+{% endif %}
 
 <div class="panel">
-  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-    <h2 style="margin:0">Runs ({{ totals.runs }})</h2>
-    <span class="muted" style="font-size:13px">{{ totals.findings }} findings total</span>
+  <div class="toolbar">
+    <h2 style="margin:0">Runs ({{ rows|length }})</h2>
+    <a class="btn primary sm" href="/scan">+ New scan</a>
     <span class="spacer" style="margin-left:auto"></span>
-    <input id="search" placeholder="filter runs…" oninput="filterRuns()" style="min-width:200px">
+    <input id="search" placeholder="filter…" oninput="filterRuns()" style="min-width:180px">
   </div>
+
   {% if rows %}
-  <table id="runs">
-    <thead><tr>
-      {{ sorth('date', 'Started') }}
-      <th>Run</th>
-      {{ sorth('workflow', 'Workflow') }}
-      {{ sorth('target', 'Target') }}
-      {{ sorth('hosts', 'Hosts') }}
-      {{ sorth('findings', 'Findings') }}
-      {{ sorth('grade', 'Grade') }}
-    </tr></thead>
-    <tbody>
-      {% for r in rows %}
-      <tr class="runrow">
-        <td class="mono">{{ r.started_at }}</td>
-        <td class="mono"><a href="/run/{{ r.run_id }}">{{ r.run_id }}</a></td>
-        <td>{{ r.workflow }}</td>
-        <td class="mono">{{ r.target }}</td>
-        <td>{{ r.hosts_up }}</td>
-        <td>{% for s in sev_order %}{% if r.by_severity[s] %}<span class="sev"
-            style="color:{{ sev_color[s] }}">{{ s[0]|upper }}{{ r.by_severity[s] }}</span>{% endif %}{% endfor %}</td>
-        <td><span class="gbadge" style="background:{{ r.grade_color }}">{{ r.grade }}</span></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <form id="bulkform" method="post" action="/runs/delete">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="run_ids" id="bulk_ids">
+    {% if not readonly %}
+    <div class="toolbar">
+      <button class="btn danger sm" type="button" onclick="bulkDelete()">Delete selected</button>
+      <span id="selcount" class="muted" style="font-size:12px"></span>
+    </div>
+    {% endif %}
+    <table id="runs">
+      <thead><tr>
+        {% if not readonly %}<th style="width:28px"><input type="checkbox" onclick="toggleAll(this)" aria-label="select all"></th>{% endif %}
+        {{ sorth('date', 'Started') }}
+        <th>Run / name</th>
+        {{ sorth('workflow', 'Workflow') }}
+        {{ sorth('target', 'Target') }}
+        {{ sorth('hosts', 'Hosts') }}
+        {{ sorth('findings', 'Findings') }}
+        {{ sorth('grade', 'Grade') }}
+        <th>Actions</th>
+      </tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="runrow">
+          {% if not readonly %}<td><input type="checkbox" class="rowcheck" value="{{ r.run_id }}" onclick="updateCount()"></td>{% endif %}
+          <td class="mono">{{ r.started_at }}</td>
+          <td class="mono"><a href="/run/{{ r.run_id }}">{{ r.run_id }}</a>
+            {% if r.name %}<div>{{ r.name }}</div>{% endif %}
+            {% if r.tags %}<div class="muted" style="font-size:11px">{{ r.tags }}</div>{% endif %}</td>
+          <td>{{ r.workflow }}</td>
+          <td class="mono">{{ r.target }}</td>
+          <td>{{ r.hosts_up }}</td>
+          <td>{% for s in sev_order %}{% if r.by_severity[s] %}<span class="sev"
+              style="color:{{ sev_color[s] }}">{{ s[0]|upper }}{{ r.by_severity[s] }}</span>{% endif %}{% endfor %}</td>
+          <td><span class="gbadge" style="background:{{ r.grade_color }}">{{ r.grade }}</span></td>
+          <td>
+            <a class="btn sm" href="/run/{{ r.run_id }}">View</a>
+            {% if not readonly %}
+            <details class="rowactions"><summary>⋯</summary>
+              <div class="pop">
+                <a class="btn sm" href="/scan?rerun={{ r.run_id }}">Re-run</a>
+                <div style="border:1px dashed var(--border);border-radius:8px;padding:8px">
+                  <div class="muted" style="font-size:11px;margin-bottom:4px">Rename / tag</div>
+                  <form method="post" action="/run/{{ r.run_id }}/rename" style="display:flex;flex-direction:column;gap:6px">
+                    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+                    <input name="name" value="{{ r.name }}" placeholder="name" maxlength="120">
+                    <input name="tags" value="{{ r.tags }}" placeholder="tags" maxlength="200">
+                    <button class="btn sm" type="submit">Save</button>
+                  </form>
+                </div>
+                <form method="post" action="/run/{{ r.run_id }}/delete"
+                      onsubmit="return confirm('Delete run {{ r.run_id }} and its report?')">
+                  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+                  <button class="btn danger sm" type="submit">Delete</button>
+                </form>
+              </div>
+            </details>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </form>
   {% else %}
-  <div class="empty">No runs yet. Start a scan above, or run one from the CLI.</div>
+  <div class="empty">No runs yet. <a href="/scan">Start a scan</a>, or run one from the CLI.</div>
   {% endif %}
 </div>
 
@@ -92,9 +136,22 @@
       tr.style.display = tr.textContent.toLowerCase().indexOf(q)!==-1 ? '' : 'none';
     });
   }
+  function checks(){ return Array.prototype.slice.call(document.querySelectorAll('.rowcheck')); }
+  function updateCount(){
+    var n=checks().filter(function(c){return c.checked;}).length;
+    var el=document.getElementById('selcount'); if(el) el.textContent=n?(n+' selected'):'';
+  }
+  function toggleAll(box){ checks().forEach(function(c){ c.checked=box.checked; }); updateCount(); }
+  function bulkDelete(){
+    var ids=checks().filter(function(c){return c.checked;}).map(function(c){return c.value;});
+    if(!ids.length){ alert('Select at least one run.'); return; }
+    if(!confirm('Delete '+ids.length+' run(s)?')) return;
+    document.getElementById('bulk_ids').value=ids.join(',');
+    document.getElementById('bulkform').submit();
+  }
   (function(){
     try{ var q=sessionStorage.getItem('sentinel_filter'); if(q){ document.getElementById('search').value=q; filterRuns(); } }catch(e){}
-    setTimeout(function(){ location.reload(); }, 8000);   // light auto-refresh (preserves ?sort)
+    setTimeout(function(){ location.reload(); }, 10000);   // light auto-refresh (preserves ?sort)
   })();
 </script>
 {% endblock %}

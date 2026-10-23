@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Scan{% endblock %}
+{% macro field(spec) %}
+  {% set val = prefill.options.get(spec.key, spec.default) %}
+  <div style="margin-bottom:12px">
+    <label for="f_{{ spec.key }}" style="display:block;font-weight:600;font-size:13px">{{ spec.label }}</label>
+    {% if spec.kind == 'bool' %}
+      <label style="font-weight:400"><input type="checkbox" id="f_{{ spec.key }}" name="{{ spec.key }}" value="1" {{ 'checked' if val }}> enable</label>
+    {% elif spec.kind == 'int' %}
+      <input id="f_{{ spec.key }}" type="number" name="{{ spec.key }}" value="{{ val }}" min="{{ spec.min }}" max="{{ spec.max }}" step="1">
+    {% elif spec.kind == 'choice' %}
+      <select id="f_{{ spec.key }}" name="{{ spec.key }}">
+        {% for cval, clabel in spec.choices %}<option value="{{ cval }}" {{ 'selected' if cval|string == val|string }}>{{ clabel }}</option>{% endfor %}
+      </select>
+    {% else %}
+      <input id="f_{{ spec.key }}" type="text" name="{{ spec.key }}" value="{{ val }}" {% if spec.maxlen %}maxlength="{{ spec.maxlen }}"{% endif %}>
+    {% endif %}
+    <div class="muted" style="font-size:12px">{{ spec.help }}</div>
+  </div>
+{% endmacro %}
+{% block content %}
+<h1>Launch a scan</h1>
+
+<div class="panel">
+  <form method="get" action="/scan" class="toolbar" style="margin:0">
+    <label>Workflow&nbsp;
+      <select name="workflow" onchange="this.form.submit()">
+        {% for wf in workflows %}<option value="{{ wf }}" {{ 'selected' if wf == workflow }}>{{ wf }}</option>{% endfor %}
+      </select>
+    </label>
+    <noscript><button class="btn sm" type="submit">Load options</button></noscript>
+    <span class="muted" style="font-size:12px">Options below reflect the modules in this workflow.</span>
+  </form>
+</div>
+
+<div class="panel">
+  {% if readonly %}
+  <div class="banner warn">Read-only mode — launching scans is disabled.</div>
+  {% else %}
+  {% if active %}
+  <div class="banner warn">A scan is already running —
+    <a href="/run/{{ active.run_id }}/live">watch it live</a>. A new scan is rejected until it finishes.</div>
+  {% endif %}
+  <form method="post" action="/run/{{ workflow }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-weight:600;font-size:13px">Target</label>
+      <input name="target" value="{{ prefill.target }}"
+             placeholder="IP / CIDR / hostname (blank = auto-detected /24)" style="min-width:300px">
+      <div class="muted" style="font-size:12px">Validated server-side. Offensive modules still require the lab-authorization gate.</div>
+    </div>
+    {% for mod, specs in option_groups %}
+    <fieldset style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+      <legend class="muted" style="font-size:12px;padding:0 6px">{{ mod }}</legend>
+      {% for spec in specs %}{{ field(spec) }}{% endfor %}
+    </fieldset>
+    {% else %}
+    <p class="muted">This workflow has no tunable options.</p>
+    {% endfor %}
+    <button class="btn primary" type="submit">Start scan</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

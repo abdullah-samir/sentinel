@@ -489,3 +489,41 @@
 2026-10-10 22:31:10,584 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
 2026-10-10 22:31:45,204 INFO    sentinel.run: capture: done — iface=wlan0 packets=1364 bytes=326532 duration=34.6s stop=duration
 2026-10-10 22:31:49,847 INFO    sentinel.orchestrator: run 2026-10-10_19-31_capture-only_be4b9f complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-10 23:06:00,950 INFO    sentinel.orchestrator: run 2026-10-10_20-06_quick-recon_127.0.0.1-32_93e8c4: workflow=quick_recon target='127.0.0.1/32' steps=['red.recon_nmap']
+2026-10-10 23:06:00,988 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-10 23:06:00,991 INFO    sentinel.run: recon: scanning 127.0.0.1/32 (fast mode) — nmap -sT -Pn -T5 --top-ports 100 --host-timeout 300s
+2026-10-10 23:06:00,995 INFO    sentinel.run: recon: -Pn active — host discovery skipped; every address is treated as up (slower on large CIDRs)
+2026-10-10 23:06:01,179 INFO    sentinel.run: recon: unprivileged scan — MAC/vendor unavailable (ARP/OS detection need root)
+2026-10-10 23:06:01,183 INFO    sentinel.run: recon: 127.0.0.1 up, 2 port(s)
+2026-10-10 23:06:01,186 INFO    sentinel.run: recon: under -Pn, "alive" = responded with >=1 open/closed port or a MAC (not merely pinged); 1 alive, 0 no-response address(es) dropped
+2026-10-10 23:06:01,190 INFO    sentinel.run: recon: complete — 1 host(s) up (of 1 scanned), 2 open service(s)
+2026-10-10 23:06:01,207 INFO    sentinel.orchestrator: run 2026-10-10_20-06_quick-recon_127.0.0.1-32_93e8c4 complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 2, 'findings_by_severity': {'info': 1, 'low': 1, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-11 09:11:09,365 INFO    sentinel.orchestrator: run 2026-10-11_06-11_quick-recon_10.10.1.0-24_ce9017: workflow=quick_recon target='10.10.1.0/24' steps=['red.recon_nmap']
+2026-10-11 09:11:09,412 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-11 09:11:09,417 INFO    sentinel.run: recon: scanning 10.10.1.0/24 (fast mode) — nmap -sT -T4 --top-ports 100 --host-timeout 300s
+2026-10-11 09:11:17,816 INFO    sentinel.run: recon: unprivileged scan — MAC/vendor unavailable (ARP/OS detection need root)
+2026-10-11 09:11:17,821 INFO    sentinel.run: recon: 10.10.1.1 up, 4 port(s)
+2026-10-11 09:11:17,824 INFO    sentinel.run: recon: 10.10.1.2 up, 3 port(s)
+2026-10-11 09:11:17,827 INFO    sentinel.run: recon: 10.10.1.50 up, 0 port(s)
+2026-10-11 09:11:17,830 INFO    sentinel.run: recon: 10.10.1.51 up, 0 port(s)
+2026-10-11 09:11:17,834 INFO    sentinel.run: recon: 10.10.1.52 up, 0 port(s)
+2026-10-11 09:11:17,837 INFO    sentinel.run: recon: 10.10.1.53 up, 0 port(s)
+2026-10-11 09:11:17,840 INFO    sentinel.run: recon: 10.10.1.56 up, 0 port(s)
+2026-10-11 09:11:17,843 INFO    sentinel.run: recon: 10.10.1.57 up, 0 port(s)
+2026-10-11 09:11:17,847 INFO    sentinel.run: recon: 10.10.1.58 up, 0 port(s)
+2026-10-11 09:11:17,850 INFO    sentinel.run: recon: 10.10.1.59 up, 0 port(s)
+2026-10-11 09:11:17,853 INFO    sentinel.run: recon: 10.10.1.60 up, 0 port(s)
+2026-10-11 09:11:17,856 INFO    sentinel.run: recon: 10.10.1.61 up, 0 port(s)
+2026-10-11 09:11:17,859 INFO    sentinel.run: recon: 10.10.1.70 up, 0 port(s)
+2026-10-11 09:11:17,862 INFO    sentinel.run: recon: 10.10.1.90 up, 0 port(s)
+2026-10-11 09:11:17,866 INFO    sentinel.run: recon: 10.10.1.99 up, 1 port(s)
+2026-10-11 09:11:17,869 INFO    sentinel.run: recon: complete — 15 host(s) up (of 15 scanned), 8 open service(s)
+2026-10-11 09:11:17,886 INFO    sentinel.orchestrator: run 2026-10-11_06-11_quick-recon_10.10.1.0-24_ce9017 complete: {'hosts_up': 15, 'assets_total': 15, 'findings_total': 8, 'findings_by_severity': {'info': 7, 'low': 1, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-11 11:15:26,848 WARNING sentinel.dashboard.auth: login lockout: ip=196.219.57.236 locked 900s after 5 failed attempts (lockout #1)
+2026-10-14 19:43:07,713 INFO    sentinel.orchestrator: run 2026-10-14_16-43_full-audit_ef2755: workflow=full_audit target='(none)' steps=['red.recon_nmap', 'blue.capture_tshark', 'ml.detector_template']
+2026-10-14 19:43:07,784 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-14 19:43:07,800 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-14 19:43:07,807 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
+2026-10-14 19:43:42,334 INFO    sentinel.run: capture: done — iface=wlan0 packets=214 bytes=43348 duration=34.5s stop=duration
+2026-10-14 19:43:46,328 INFO    sentinel.orchestrator: step ml.detector_template skipped: no model at /home/sentinel/sentinel/data/models/detector_template.pkl
+2026-10-14 19:43:46,344 INFO    sentinel.orchestrator: run 2026-10-14_16-43_full-audit_ef2755 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 3, 'findings_by_severity': {'info': 3, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}

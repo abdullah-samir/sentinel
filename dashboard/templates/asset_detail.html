@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Host {{ host.ip }}{% endblock %}
+{% block content %}
+<p style="margin:0 0 10px"><a href="/assets">&larr; Assets</a></p>
+<h1 class="mono">{{ host.ip }}</h1>
+<div class="panel">
+  <div class="cards">
+    <div class="card"><div class="n mono" style="font-size:16px">{{ host.mac or "—" }}</div><div class="l">MAC</div></div>
+    <div class="card"><div class="n" style="font-size:16px">{{ host.vendor or "—" }}</div><div class="l">Vendor</div></div>
+    <div class="card"><div class="n mono" style="font-size:16px">{{ host.hostname or "—" }}</div><div class="l">Hostname</div></div>
+    <div class="card"><div class="n"><span class="sev" style="color:{{ sev_color[host.worst] }}">{{ host.worst }}</span></div><div class="l">Worst severity</div></div>
+    <div class="card"><div class="n">{{ host.times_seen }}</div><div class="l">Times seen</div></div>
+  </div>
+  <div class="muted" style="font-size:13px">
+    IPs: <span class="mono">{{ host.ips|join(', ') }}</span> ·
+    open ports: <span class="mono">{{ host.open_ports|join(', ') if host.open_ports else "none" }}</span></div>
+</div>
+
+<div class="panel">
+  <h2>History ({{ host.history|length }} appearances)</h2>
+  <table>
+    <thead><tr><th>Started</th><th>Run</th><th>Workflow</th><th>IP</th><th>Open ports</th><th>Worst</th></tr></thead>
+    <tbody>
+      {% for h in host.history %}
+      <tr>
+        <td class="mono">{{ h.started_at }}</td>
+        <td class="mono"><a href="/run/{{ h.run_id }}">{{ h.run_id }}</a></td>
+        <td>{{ h.workflow }}</td>
+        <td class="mono">{{ h.ip }}</td>
+        <td class="mono">{{ h.open_ports|join(', ') if h.open_ports else "—" }}</td>
+        <td><span class="sev" style="color:{{ sev_color[h.worst] }}">{{ h.worst }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

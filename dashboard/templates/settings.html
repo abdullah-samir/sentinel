@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+{% set notes = {'pwchanged':'Password changed.','badcurrent':'Current password is incorrect.',
+  'tooshort':'New password must be at least 8 characters.','mismatch':'New passwords do not match.',
+  'saved':'Settings saved.','invalid':'Invalid value — not saved.'} %}
+{% if msg and notes.get(msg) %}
+<div class="banner {{ 'err' if msg in ('badcurrent','tooshort','mismatch','invalid') else '' }}">{{ notes[msg] }}</div>
+{% endif %}
+
+<div class="panel">
+  <h2>System</h2>
+  <div class="cards">
+    <div class="card"><div class="n">v{{ info.version }}</div><div class="l">Version</div></div>
+    <div class="card"><div class="n">{{ info.modules }}</div><div class="l">Modules</div></div>
+    <div class="card"><div class="n">{{ info.runs }}</div><div class="l">Runs</div></div>
+    <div class="card"><div class="n">{{ info.free_gb }} GB</div><div class="l">Free (data/)</div></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Runtime config</h2>
+  <p class="muted" style="font-size:12px">Precedence: environment variable (if set) &gt; saved setting &gt; built-in default.
+    An env-pinned value is shown below and can't be changed here until the env var is removed (no silent revert).</p>
+  <form method="post" action="/settings/config" style="display:flex;flex-direction:column;gap:12px;max-width:420px">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <label><input type="checkbox" name="readonly" value="1" {{ 'checked' if readonly }} {{ 'disabled' if pins.readonly }}>
+      Read-only mode {% if pins.readonly %}<span class="muted">(env-pinned)</span>{% endif %}</label>
+    <label>Default timing
+      <select name="nmap_timing" {{ 'disabled' if pins.nmap_timing }}>
+        {% for t in ['1','2','3','4','5'] %}<option value="{{ t }}" {{ 'selected' if t == cfg.nmap_timing|string }}>T{{ t }}</option>{% endfor %}
+      </select>{% if pins.nmap_timing %}<span class="muted"> (env-pinned)</span>{% endif %}</label>
+    <label>Default top-ports
+      <input type="number" name="nmap_top_ports" value="{{ cfg.nmap_top_ports }}" min="0" max="65535" {{ 'disabled' if pins.nmap_top_ports }}>
+      {% if pins.nmap_top_ports %}<span class="muted">(env-pinned)</span>{% endif %}</label>
+    <label>Default per-host timeout (s)
+      <input type="number" name="nmap_timeout" value="{{ cfg.nmap_timeout }}" min="0" max="3600" {{ 'disabled' if pins.nmap_timeout }}>
+      {% if pins.nmap_timeout %}<span class="muted">(env-pinned)</span>{% endif %}</label>
+    <button class="btn primary" type="submit" style="align-self:flex-start">Save config</button>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>Change admin password</h2>
+  <form method="post" action="/settings/password" style="display:flex;flex-direction:column;gap:10px;max-width:360px">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="password" name="current" placeholder="current password" autocomplete="current-password">
+    <input type="password" name="new" placeholder="new password (min 8 chars)" autocomplete="new-password">
+    <input type="password" name="confirm" placeholder="confirm new password" autocomplete="new-password">
+    <button class="btn primary" type="submit" style="align-self:flex-start">Change password</button>
+  </form>
+  <p class="muted" style="font-size:12px;margin-top:8px">Your current session stays signed in after a change.</p>
+</div>
+{% endblock %}

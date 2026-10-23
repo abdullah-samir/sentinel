@@ -67,7 +67,11 @@ def _seed_done_live(app, run_id="run-live-1"):
 
 
 def _row_order(text):
-    return re.findall(r'href="/run/(run-[a-z]+)"', text)
+    seen = []
+    for m in re.findall(r'href="/run/(run-[a-z]+)"', text):
+        if m not in seen:
+            seen.append(m)           # first occurrence per run = its row position
+    return seen
 
 
 # --- ETA (honest) ---------------------------------------------------------
