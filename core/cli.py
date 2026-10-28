@@ -241,6 +241,39 @@ def cmd_analyze(args) -> int:
 
 
 # --------------------------------------------------------------------------
+# subcommand: wifi-check (verify the RTL8188EUS monitor adapter)
+# --------------------------------------------------------------------------
+def cmd_wifi_check(args) -> int:
+    from plugins.red.wifi_scan import wifi_check  # late import (plugin helper)
+
+    config = Config.from_env()
+    r = wifi_check(config)
+    yn = lambda b: "yes" if b else "no"  # noqa: E731
+
+    print("Sentinel Wi-Fi monitor check:")
+    print(f"  rtl8188eus DKMS driver installed: {yn(r['driver_dkms'])}")
+    loaded = r["module_loaded"] or "(none)"
+    if r.get("correct_driver"):
+        loaded += "  (correct)"
+    elif r["module_loaded"] == "r8188eu":
+        loaded += "  <- OLD in-kernel driver; reboot needed"
+    elif r["module_loaded"]:
+        loaded += "  <- generic driver; install rtl8188eus + reboot"
+    print(f"  adapter driver: {loaded}")
+    print(f"  Wi-Fi interfaces: {', '.join(r['wifi_interfaces']) or '(none)'}")
+    print(f"  default-route interface (never the scan target): {r['default_iface'] or '(none)'}")
+    print(f"  detected USB adapter: {r['adapter_iface'] or '(none detected)'}")
+    print(f"  monitor mode available: {yn(r['monitor_ok'])}")
+    for note in r["notes"]:
+        print(f"  ! {note}")
+    print(f"  READY: {yn(r['ready'])}")
+    if not r["ready"]:
+        print("  Run `deploy/wifi-monitor-setup.sh` (then reboot) if the driver is "
+              "missing; re-run `sentinel wifi-check` after any kernel update.")
+    return 0 if r["ready"] else 1
+
+
+# --------------------------------------------------------------------------
 # subcommands: dashboard (thin dispatch into the dashboard package)
 # --------------------------------------------------------------------------
 def cmd_dashboard(args) -> int:
@@ -313,6 +346,10 @@ def build_parser() -> argparse.ArgumentParser:
     pa = sub.add_parser("analyze", help="analyze an existing pcap (offline)")
     pa.add_argument("pcap", help="path to a .pcap/.pcapng file")
     pa.set_defaults(func=cmd_analyze)
+
+    pwc = sub.add_parser("wifi-check",
+                         help="verify the RTL8188EUS Wi-Fi monitor adapter + driver")
+    pwc.set_defaults(func=cmd_wifi_check)
 
     pdash = sub.add_parser("dashboard", help="launch the web dashboard (needs auth)")
     pdash.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1)")

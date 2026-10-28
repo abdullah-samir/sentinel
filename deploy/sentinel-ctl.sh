@@ -55,6 +55,21 @@ raise SystemExit(0 if load_dash_config(Config.from_env()).configured else 1)
 PY
 }
 
+# Poll the upstream /health, retrying ~1s apart for up to ~10s, so we don't report
+# 000 during the brief window before uvicorn finishes binding after a restart.
+# Prints the final HTTP code; returns 0 iff it reached 200.
+health_check() {
+  local tries="${1:-10}" code="000"
+  for ((i = 1; i <= tries; i++)); do
+    code="$(curl -s -o /dev/null -w '%{http_code}' "$UPSTREAM/health" 2>/dev/null)" || code="000"
+    [ -n "$code" ] || code="000"
+    [ "$code" = "200" ] && break
+    [ "$i" -lt "$tries" ] && sleep 1
+  done
+  printf '%s' "$code"
+  [ "$code" = "200" ]
+}
+
 case "${1:-}" in
   install)
     ensure_env
@@ -71,7 +86,7 @@ case "${1:-}" in
   status)
     systemctl --no-pager --full status "${UNITS[@]}" || true
     echo
-    code="$(curl -s -o /dev/null -w '%{http_code}' "$UPSTREAM/health" 2>/dev/null || echo 000)"
+    code="$(health_check 10 || true)"        # retry ~1s apart up to ~10s (avoid a false 000)
     echo "Upstream ($UPSTREAM/health, what the tunnel dials): HTTP $code"
     [ "$code" = "200" ] || echo "  ^ not 200 => ngrok would fail (ERR_NGROK_8012). Is the dashboard up on IPv4?"
     echo "Public URL: $PUBLIC_URL"
@@ -83,6 +98,9 @@ case "${1:-}" in
     copy_units                      # re-copy corrected units + daemon-reload first
     sudo systemctl restart "${UNITS[@]}"
     echo "restarted ${UNITS[*]}"
+    code="$(health_check 10 || true)"       # wait ~10s for uvicorn to re-bind before judging
+    echo "Upstream ($UPSTREAM/health): HTTP $code"
+    [ "$code" = "200" ] || echo "  ^ not 200 after ~10s => check:  $0 logs"
     ;;
   full)
     set_readonly 0

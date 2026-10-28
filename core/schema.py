@@ -98,13 +98,19 @@ class Finding:
 
 @dataclass
 class Asset:
-    ip: str
+    ip: str                            # host IP, or a BSSID/station MAC for Wi-Fi assets
     alive: bool = False
     mac: str = ""
     vendor: str = ""
     hostname: str = ""
     open_ports: List[int] = field(default_factory=list)
     os_guess: str = ""
+    # --- wireless (red.wifi_scan); defaults keep host assets byte-identical ---
+    kind: str = "host"                 # "host" | "wifi_ap" | "wifi_client"
+    ssid: str = ""                     # AP network name (ESSID)
+    channel: str = ""                  # Wi-Fi channel (string; "" = unknown)
+    encryption: str = ""               # e.g. "WPA2", "WEP", "OPEN"
+    signal: str = ""                   # signal/power as reported (dBm string)
 
 
 @dataclass

@@ -36,6 +36,12 @@ class Config:
     nmap_timing: str = "4"              # nmap -T<timing> (0-5); 4 = aggressive
     nmap_pn: bool = False               # -Pn: skip host discovery (slow on big CIDRs)
 
+    # --- Wi-Fi scan tuning (red.wifi_scan reads these) --------------------
+    # wifi_iface (above) "" / a non-present name -> auto-detect the RTL8188EUS
+    # USB adapter by driver/chipset; set it to a present iface to pin one.
+    wifi_scan_seconds: int = 30         # bounded airodump-ng capture duration
+    wifi_scan_channel: str = ""         # "" -> channel-hop; else lock to this channel
+
     # --- packet capture tuning (blue.capture_tshark reads these) ----------
     capture_iface: str = ""             # "" -> auto-select (default route / first up)
     capture_seconds: int = 30           # primary stop: -a duration:
@@ -106,6 +112,16 @@ class Config:
             cfg.nmap_timing = timing
         if os.environ.get("SENTINEL_NMAP_PN") == "1":
             cfg.nmap_pn = True
+        # Wi-Fi scan tuning
+        raw = os.environ.get("SENTINEL_WIFI_SCAN_SECONDS")
+        if raw:
+            try:
+                cfg.wifi_scan_seconds = int(raw)
+            except ValueError:
+                pass
+        chan = os.environ.get("SENTINEL_WIFI_SCAN_CHANNEL")
+        if chan is not None:
+            cfg.wifi_scan_channel = chan
         # packet capture tuning
         iface = os.environ.get("SENTINEL_CAPTURE_IFACE")
         if iface:

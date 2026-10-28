@@ -59,6 +59,49 @@ password from a non-locked IP always works. This is in addition to the existing
 signed-session + CSRF protections; the offensive-module authorization gate is
 unchanged.
 
+## Wi-Fi monitor adapter (red.wifi_scan)
+
+The `red.wifi_scan` module does **passive** Wi-Fi reconnaissance (lists APs and
+clients — it never transmits, deauths, or injects). It needs a monitor-capable
+USB adapter: the TP-Link/Alfa **WN722N v2/v3 (Realtek RTL8188EUS)**. The driver
+is out-of-tree and installed via DKMS (so it auto-rebuilds on kernel updates).
+
+**One-time setup (run it yourself; needs root; NOT auto-run):**
+```
+sudo /home/sentinel/sentinel/deploy/wifi-monitor-setup.sh
+sudo reboot
+sentinel wifi-check
+```
+What the setup script does, in order:
+1. Installs prerequisites **first** — `dkms`, `build-essential`, `git`, and the
+   **kernel headers** (`raspberrypi-kernel-headers`, or `linux-headers-$(uname -r)`).
+   It errors out clearly if the headers tree is missing (the DKMS build fails
+   without it).
+2. Clones and DKMS-installs the driver from GitHub
+   (`https://github.com/aircrack-ng/rtl8188eus`) — **not** from apt.
+3. Blacklists the in-kernel drivers that would otherwise claim the chip —
+   `r8188eu` **and** `rtl8xxxu` (the latter is what binds the WN722N v2/v3 on
+   current Raspberry Pi OS / Debian) — via
+   `/etc/modprobe.d/sentinel-rtl8188eus-blacklist.conf`. The Pi's built-in Wi-Fi
+   uses `brcmfmac` and is unaffected.
+4. Verifies the driver is registered (`dkms status` lists `rtl8188eus`).
+5. Tells you to **reboot** — required because the blacklist and the new module
+   only take effect on a clean boot.
+
+**`sentinel wifi-check`** auto-detects the adapter by **driver/chipset, not by
+interface name** (it never assumes `wlan1`), and reports: is the DKMS driver
+installed; is the correct module loaded (or is the old `r8188eu` still loaded →
+reboot needed); which interface is the USB adapter; and whether monitor mode is
+available. It never treats the Pi's built-in / default-route interface as the
+scan target. **Re-run `sentinel wifi-check` after any kernel update.**
+
+Safety: the module enables monitor mode with `iw`/`ip` on that one adapter and
+**never** runs `airmon-ng check kill` or touches NetworkManager/wpa_supplicant,
+so the Pi's networking and your SSH session are never dropped; it also refuses to
+use the interface carrying the default route or the active SSH connection. Until
+the adapter + driver are set up, the `wifi_scan` workflow shows **unavailable**
+in the dashboard and is skipped cleanly.
+
 ## Security (read this)
 This deployment is **public + network-scan-capable + unattended**. Therefore:
 - **Use a long, random admin password** (e.g. `openssl rand -base64 24`). Anyone who

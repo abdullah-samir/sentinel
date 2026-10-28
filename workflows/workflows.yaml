@@ -10,5 +10,10 @@ quick_recon:
 capture_only:
   steps: [blue.capture_tshark]
 
+# Passive Wi-Fi reconnaissance. requires_hw => shows unavailable (and is skipped)
+# until the RTL8188EUS USB adapter + driver are set up (see deploy/wifi-monitor-setup.sh).
+wifi_scan:
+  steps: [red.wifi_scan]
+
 full_audit:
   steps: [red.recon_nmap, blue.capture_tshark, ml.detector_template]

@@ -36,6 +36,16 @@ OPTION_GROUPS = {
         {"key": "nmap_privileged", "label": "Privileged (-sS/-O)", "kind": "bool",
          "default": False, "help": "SYN + OS detection; only effective when running as root."},
     ],
+    "red.wifi_scan": [
+        {"key": "wifi_scan_seconds", "label": "Duration (s)", "kind": "int",
+         "default": 30, "min": 1, "max": 3600, "help": "How long to listen (airodump-ng)."},
+        {"key": "wifi_scan_channel", "label": "Channel", "kind": "text", "default": "",
+         "maxlen": 4, "pattern": r"^[0-9]+$",
+         "help": "Blank = channel-hop; else lock to this 2.4/5 GHz channel number."},
+        {"key": "wifi_iface", "label": "Adapter interface", "kind": "text", "default": "",
+         "maxlen": 32, "pattern": r"^[A-Za-z0-9._:-]+$",
+         "help": "Blank = auto-detect the RTL8188EUS USB adapter by driver/chipset."},
+    ],
     "blue.capture_tshark": [
         {"key": "capture_seconds", "label": "Duration (s)", "kind": "int",
          "default": 30, "min": 1, "max": 3600, "help": "Capture stop time."},
@@ -52,7 +62,8 @@ OPTION_GROUPS = {
 # Config attributes that may be set from options (besides the mode->nmap_fast map).
 _CONFIG_KEYS = ("nmap_pn", "nmap_timeout", "nmap_top_ports", "nmap_timing",
                 "nmap_privileged", "capture_seconds", "capture_iface",
-                "capture_filter", "capture_max_packets")
+                "capture_filter", "capture_max_packets",
+                "wifi_scan_seconds", "wifi_scan_channel", "wifi_iface")
 
 
 def _steps(config, workflow: str) -> List[str]:
@@ -67,6 +78,8 @@ _DEFAULT_FROM_CONFIG = {
     "nmap_timing": "nmap_timing", "nmap_privileged": "nmap_privileged",
     "capture_seconds": "capture_seconds", "capture_iface": "capture_iface",
     "capture_filter": "capture_filter", "capture_max_packets": "capture_max_packets",
+    "wifi_scan_seconds": "wifi_scan_seconds", "wifi_scan_channel": "wifi_scan_channel",
+    "wifi_iface": "wifi_iface",
 }
 
 
