@@ -527,3 +527,44 @@
 2026-10-14 19:43:42,334 INFO    sentinel.run: capture: done — iface=wlan0 packets=214 bytes=43348 duration=34.5s stop=duration
 2026-10-14 19:43:46,328 INFO    sentinel.orchestrator: step ml.detector_template skipped: no model at /home/sentinel/sentinel/data/models/detector_template.pkl
 2026-10-14 19:43:46,344 INFO    sentinel.orchestrator: run 2026-10-14_16-43_full-audit_ef2755 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 3, 'findings_by_severity': {'info': 3, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-28 19:07:02,111 WARNING sentinel.orchestrator: workflow step 'red.wifi_scan' is not a registered module; skipping
+2026-10-28 19:07:02,130 INFO    sentinel.orchestrator: run 2026-10-28_16-07_wifi-scan_7b33ab: workflow=wifi_scan target='(none)' steps=[]
+2026-10-28 19:07:02,146 INFO    sentinel.orchestrator: run 2026-10-28_16-07_wifi-scan_7b33ab complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-28 19:07:58,574 WARNING sentinel.orchestrator: workflow step 'red.wifi_scan' is not a registered module; skipping
+2026-10-28 19:07:58,577 INFO    sentinel.orchestrator: run 2026-10-28_16-07_wifi-scan_dcef93: workflow=wifi_scan target='(none)' steps=[]
+2026-10-28 19:07:58,593 INFO    sentinel.orchestrator: run 2026-10-28_16-07_wifi-scan_dcef93 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-28 22:42:43,105 INFO    sentinel.orchestrator: run 2026-10-28_19-42_wifi-scan_10.10.1.0-24_e11307: workflow=wifi_scan target='10.10.1.0/24' steps=['red.wifi_scan']
+2026-10-28 22:42:43,156 INFO    sentinel.orchestrator: step red.wifi_scan: running
+2026-10-28 22:42:43,172 INFO    sentinel.run: wifi_scan: enabling monitor mode on wlan1 via iw/ip (NOT airmon-ng; the Pi's networking is untouched)
+2026-10-28 22:42:43,185 ERROR   sentinel.run: wifi_scan failed: could not set wlan1 to monitor mode (rc=255)
+2026-10-28 22:42:43,201 INFO    sentinel.orchestrator: run 2026-10-28_19-42_wifi-scan_10.10.1.0-24_e11307 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 0, 'low': 1, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-28 22:49:25,046 INFO    sentinel.orchestrator: run 2026-10-28_19-49_wifi-scan_10.10.1.0-24_01678f: workflow=wifi_scan target='10.10.1.0/24' steps=['red.wifi_scan']
+2026-10-28 22:49:25,094 INFO    sentinel.orchestrator: step red.wifi_scan: running
+2026-10-28 22:49:25,107 INFO    sentinel.run: wifi_scan: enabling monitor mode on wlan1 via iw/ip (NOT airmon-ng; the Pi's networking is untouched)
+2026-10-28 22:49:25,224 INFO    sentinel.run: wifi_scan: capturing on wlan1 for 25s (channel-hopping)
+2026-10-28 22:49:50,260 INFO    sentinel.run: wifi_scan: complete — 0 AP(s), 0 client(s)
+2026-10-28 22:49:50,381 INFO    sentinel.run: wifi_scan: restored wlan1 to managed mode
+2026-10-28 22:49:50,396 INFO    sentinel.orchestrator: run 2026-10-28_19-49_wifi-scan_10.10.1.0-24_01678f complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-28 22:52:49,785 WARNING sentinel.orchestrator: workflow step 'red.wifi_scan' is not a registered module; skipping
+2026-10-28 22:52:49,788 INFO    sentinel.orchestrator: run 2026-10-28_19-52_wifi-scan_3aecf2: workflow=wifi_scan target='(none)' steps=[]
+2026-10-28 22:52:49,807 INFO    sentinel.orchestrator: run 2026-10-28_19-52_wifi-scan_3aecf2 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-28 22:57:08,058 INFO    sentinel.orchestrator: run 2026-10-28_19-57_wifi-scan_10.10.1.0-24_742f69: workflow=wifi_scan target='10.10.1.0/24' steps=['red.wifi_scan']
+2026-10-28 22:57:08,102 INFO    sentinel.orchestrator: step red.wifi_scan: running
+2026-10-28 22:57:08,115 INFO    sentinel.run: wifi_scan: enabling monitor mode on wlan1 via iw/ip (NOT airmon-ng; the Pi's networking is untouched)
+2026-10-28 22:57:08,232 INFO    sentinel.run: wifi_scan: capturing on wlan1 for 15s (channel-hopping)
+2026-10-28 22:57:08,787 WARNING sentinel.orchestrator: workflow step 'red.wifi_scan' is not a registered module; skipping
+2026-10-28 22:57:08,790 INFO    sentinel.orchestrator: run 2026-10-28_19-57_wifi-scan_dd7f49: workflow=wifi_scan target='(none)' steps=[]
+2026-10-28 22:57:08,809 INFO    sentinel.orchestrator: run 2026-10-28_19-57_wifi-scan_dd7f49 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-28 22:57:23,269 INFO    sentinel.run: wifi_scan: complete — 0 AP(s), 0 client(s)
+2026-10-28 22:57:23,392 INFO    sentinel.run: wifi_scan: restored wlan1 to managed mode
+2026-10-28 22:57:23,407 INFO    sentinel.orchestrator: run 2026-10-28_19-57_wifi-scan_10.10.1.0-24_742f69 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-28 22:57:39,034 WARNING sentinel.orchestrator: workflow step 'red.wifi_scan' is not a registered module; skipping
+2026-10-28 22:57:39,042 INFO    sentinel.orchestrator: run 2026-10-28_19-57_wifi-scan_10.10.1.1-32_025e18: workflow=wifi_scan target='10.10.1.1/32' steps=[]
+2026-10-28 22:57:39,063 INFO    sentinel.orchestrator: run 2026-10-28_19-57_wifi-scan_10.10.1.1-32_025e18 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-28 23:41:24,691 INFO    sentinel.orchestrator: run 2026-10-28_20-41_wifi-scan_10.10.1.0-24_1840b7: workflow=wifi_scan target='10.10.1.0/24' steps=['red.wifi_scan']
+2026-10-28 23:41:24,739 INFO    sentinel.orchestrator: step red.wifi_scan: running
+2026-10-28 23:41:24,755 INFO    sentinel.run: wifi_scan: enabling monitor mode on wlan1 via iw/ip (NOT airmon-ng; the Pi's networking is untouched)
+2026-10-28 23:41:24,873 INFO    sentinel.run: wifi_scan: capturing on wlan1 for 30s (channel-hopping)
+2026-10-28 23:41:55,142 INFO    sentinel.run: wifi_scan: complete — 0 AP(s), 0 client(s)
+2026-10-28 23:41:55,273 INFO    sentinel.run: wifi_scan: restored wlan1 to managed mode
+2026-10-28 23:41:55,293 INFO    sentinel.orchestrator: run 2026-10-28_20-41_wifi-scan_10.10.1.0-24_1840b7 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}

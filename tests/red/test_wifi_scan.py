@@ -53,10 +53,12 @@ def make_ctx(tmp_path, **cfg_over):
 
 
 def wire(monkeypatch, iface="wlan1", default_if="wlan0", ssh_if="",
-         driver="rtl8188eus", monitor=True, airodump=None):
+         driver="rtl8188eus", monitor=True, airodump=None, as_root=False):
     """Patch all host-touching helpers so run()/is_available() are hermetic.
+    `as_root` controls _priv(): non-root (default) prepends `sudo -n`.
     Returns the list that records every iw/ip command issued."""
     cmds = []
+    monkeypatch.setattr(mod.os, "geteuid", lambda: 0 if as_root else 1000)
     monkeypatch.setattr(mod, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(mod, "detect_adapter", lambda cfg: iface)
     monkeypatch.setattr(mod, "_default_route_iface", lambda: default_if)
@@ -67,6 +69,11 @@ def wire(monkeypatch, iface="wlan1", default_if="wlan0", ssh_if="",
     if airodump is not None:
         monkeypatch.setattr(WifiScan, "_run_airodump", airodump)
     return cmds
+
+
+def _core(cmd):
+    """Drop a leading `sudo -n` so assertions focus on the real command."""
+    return cmd[2:] if cmd[:2] == ["sudo", "-n"] else cmd
 
 
 def _fake_airodump(csv_text, capture):
@@ -133,8 +140,9 @@ def test_monitor_enable_and_restore_called(tmp_path, monkeypatch):
     cap = {}
     cmds = wire(monkeypatch, iface="wlan1", airodump=_fake_airodump(SAMPLE_CSV, cap))
     WifiScan().run(make_ctx(tmp_path, wifi_scan_seconds=2))
-    assert ["iw", "dev", "wlan1", "set", "type", "monitor"] in cmds      # enabled
-    assert ["iw", "dev", "wlan1", "set", "type", "managed"] in cmds      # restored
+    cores = [_core(c) for c in cmds]
+    assert ["iw", "dev", "wlan1", "set", "type", "monitor"] in cores     # enabled
+    assert ["iw", "dev", "wlan1", "set", "type", "managed"] in cores     # restored
     assert not cap["outdir"].exists()                                    # temp files cleaned
 
 
@@ -149,9 +157,62 @@ def test_restore_runs_even_when_scan_raises(tmp_path, monkeypatch):
     cmds = wire(monkeypatch, iface="wlan1", airodump=boom)
     ctx = make_ctx(tmp_path, wifi_scan_seconds=2)
     WifiScan().run(ctx)                                 # must NOT propagate
-    assert ["iw", "dev", "wlan1", "set", "type", "managed"] in cmds      # restored on error
+    assert ["iw", "dev", "wlan1", "set", "type", "managed"] in [_core(c) for c in cmds]
     assert not cap["outdir"].exists()                                   # cleaned on error
     assert any(f.type == "module_error" for f in ctx.store.findings())
+
+
+# --- privilege: iw/ip run via `sudo -n` when not root (dashboard runs as sentinel)
+def test_priv_prepends_sudo_when_nonroot(monkeypatch):
+    monkeypatch.setattr(mod.os, "geteuid", lambda: 1000)
+    assert mod._priv(["iw", "dev", "wlan1", "set", "type", "monitor"]) == \
+        ["sudo", "-n", "iw", "dev", "wlan1", "set", "type", "monitor"]
+
+
+def test_priv_bare_when_root(monkeypatch):
+    monkeypatch.setattr(mod.os, "geteuid", lambda: 0)
+    assert mod._priv(["ip", "link", "set", "wlan1", "up"]) == \
+        ["ip", "link", "set", "wlan1", "up"]
+
+
+def test_monitor_enable_sudo_wrapped_when_nonroot(tmp_path, monkeypatch):
+    cap = {}
+    cmds = wire(monkeypatch, iface="wlan1", as_root=False,
+                airodump=_fake_airodump(SAMPLE_CSV, cap))
+    WifiScan().run(make_ctx(tmp_path, wifi_scan_seconds=2))
+    assert ["sudo", "-n", "iw", "dev", "wlan1", "set", "type", "monitor"] in cmds
+    assert ["sudo", "-n", "iw", "dev", "wlan1", "set", "type", "managed"] in cmds
+
+
+def test_monitor_enable_bare_when_root(tmp_path, monkeypatch):
+    cap = {}
+    cmds = wire(monkeypatch, iface="wlan1", as_root=True,
+                airodump=_fake_airodump(SAMPLE_CSV, cap))
+    WifiScan().run(make_ctx(tmp_path, wifi_scan_seconds=2))
+    assert ["iw", "dev", "wlan1", "set", "type", "monitor"] in cmds      # no sudo prefix
+    assert not any(c[:2] == ["sudo", "-n"] for c in cmds)
+
+
+def test_monitor_enable_failure_mentions_privilege(tmp_path, monkeypatch):
+    # iw returns non-zero (as it does for a non-root caller without the sudoers rule)
+    cmds = []
+    monkeypatch.setattr(mod.os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(mod, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(mod, "detect_adapter", lambda cfg: "wlan1")
+    monkeypatch.setattr(mod, "_default_route_iface", lambda: "wlan0")
+    monkeypatch.setattr(mod, "_ssh_iface", lambda: "")
+
+    def fake_run(args, timeout=10):
+        cmds.append(list(args))
+        # the `set type monitor` call fails like a real unprivileged attempt
+        rc = 255 if "monitor" in args else 0
+        return rc, "Operation not permitted" if rc else ""
+
+    monkeypatch.setattr(mod, "_run_cmd", fake_run)
+    ctx = make_ctx(tmp_path, wifi_scan_seconds=1)
+    WifiScan().run(ctx)
+    errs = [f for f in ctx.store.findings() if f.type == "module_error"]
+    assert errs and "monitor mode" in errs[0].detail and "sudoers" in errs[0].detail
 
 
 def test_never_invokes_airmon_ng(tmp_path, monkeypatch):
@@ -163,20 +224,23 @@ def test_never_invokes_airmon_ng(tmp_path, monkeypatch):
 
 
 class _FakeProc:
-    """Mimics airodump running until we SIGTERM it at the duration boundary."""
+    """Mimics airodump running until we signal it at the duration boundary."""
     def __init__(self):
-        self._terminated = False
+        self._stopped = False
 
     def wait(self, timeout=None):
-        if not self._terminated:
+        if not self._stopped:
             raise subprocess.TimeoutExpired("airodump-ng", timeout)
         return 0
 
+    def send_signal(self, sig):
+        self._stopped = True
+
     def terminate(self):
-        self._terminated = True
+        self._stopped = True
 
     def kill(self):
-        self._terminated = True
+        self._stopped = True
 
 
 def test_airodump_args_are_passive(tmp_path, monkeypatch):
@@ -188,6 +252,7 @@ def test_airodump_args_are_passive(tmp_path, monkeypatch):
         recorded["args"] = list(args)
         return _FakeProc()
 
+    monkeypatch.setattr(mod.os, "geteuid", lambda: 0)        # root -> bare command
     monkeypatch.setattr(mod.subprocess, "Popen", fake_popen)
     ctx = make_ctx(tmp_path)
     WifiScan()._run_airodump(ctx, "wlan1", tmp_path, duration=1, channel="6")
@@ -198,6 +263,38 @@ def test_airodump_args_are_passive(tmp_path, monkeypatch):
     flat = " ".join(args)
     for forbidden in ("--deauth", "-0", "aireplay", "airmon", "--inj", "attack"):
         assert forbidden not in flat
+
+
+def test_airodump_sudo_wrapped_when_nonroot(tmp_path, monkeypatch):
+    recorded = {}
+
+    def fake_popen(args, **kw):
+        recorded["args"] = list(args)
+        return _FakeProc()
+
+    monkeypatch.setattr(mod.os, "geteuid", lambda: 1000)     # non-root
+    monkeypatch.setattr(mod.subprocess, "Popen", fake_popen)
+    WifiScan()._run_airodump(make_ctx(tmp_path), "wlan1", tmp_path, duration=1, channel="")
+    args = recorded["args"]
+    assert args[:3] == ["sudo", "-n", "airodump-ng"] and args[-1] == "wlan1"
+
+
+def test_zero_frames_emits_diagnostic(tmp_path, monkeypatch):
+    """A scan that enables monitor but captures nothing emits an actionable
+    diagnostic (the rtl8xxxu monitor-RX limitation), not a silent empty result."""
+    empty_csv = ("\r\nBSSID, First time seen, Last time seen, channel, Speed, Privacy, "
+                 "Cipher, Authentication, Power, # beacons, # IV, LAN IP, ID-length, "
+                 "ESSID, Key\r\n\r\nStation MAC, First time seen, Last time seen, Power, "
+                 "# packets, BSSID, Probed ESSIDs\r\n")
+    cap = {}
+    wire(monkeypatch, iface="wlan1", driver="rtl8xxxu",
+         airodump=_fake_airodump(empty_csv, cap))
+    ctx = make_ctx(tmp_path, wifi_scan_seconds=3)
+    WifiScan().run(ctx)
+    diags = [f for f in ctx.store.findings()
+             if f.type == "module_status" and "no frames" in f.title.lower()]
+    assert diags and "rtl8xxxu" in diags[0].detail
+    assert not [a for a in ctx.store.assets()]      # genuinely zero assets
 
 
 # --- self-lockout guard ---------------------------------------------------
@@ -220,11 +317,33 @@ def test_refuses_ssh_interface(tmp_path, monkeypatch):
     assert skips and "SSH" in skips[0].detail
 
 
-# --- is_available both branches -------------------------------------------
-def test_is_available_true(tmp_path, monkeypatch):
+# --- is_available: driven by actual monitor capability, not a driver name -----
+def test_is_available_true_rtl8188eus(tmp_path, monkeypatch):
+    # out-of-tree driver, monitor supported -> available
     wire(monkeypatch, iface="wlan1", default_if="wlan0", driver="rtl8188eus", monitor=True)
     ok, reason = WifiScan().is_available(make_ctx(tmp_path))
     assert ok and reason == ""
+
+
+def test_is_available_true_rtl8xxxu(tmp_path, monkeypatch):
+    # in-kernel rtl8xxxu (kernel 6.13+) also accepted when monitor mode works
+    wire(monkeypatch, iface="wlan1", default_if="wlan0", driver="rtl8xxxu", monitor=True)
+    ok, reason = WifiScan().is_available(make_ctx(tmp_path))
+    assert ok and reason == ""
+
+
+def test_is_available_unknown_driver_but_monitor_ok(tmp_path, monkeypatch):
+    # verified via iw, not a hardcoded name: any monitor-capable driver is accepted
+    wire(monkeypatch, iface="wlan1", default_if="wlan0", driver="somedriver", monitor=True)
+    ok, reason = WifiScan().is_available(make_ctx(tmp_path))
+    assert ok and reason == ""
+
+
+def test_is_available_no_monitor_support(tmp_path, monkeypatch):
+    # a driver (even rtl8xxxu) that does NOT advertise monitor mode -> unavailable
+    wire(monkeypatch, iface="wlan1", default_if="wlan0", driver="rtl8xxxu", monitor=False)
+    ok, reason = WifiScan().is_available(make_ctx(tmp_path))
+    assert not ok and "monitor mode" in reason and "rtl8xxxu" in reason
 
 
 def test_is_available_no_airodump(tmp_path, monkeypatch):
@@ -240,16 +359,41 @@ def test_is_available_no_adapter(tmp_path, monkeypatch):
     assert not ok and "no RTL8188EUS" in reason
 
 
-def test_is_available_wrong_driver(tmp_path, monkeypatch):
-    wire(monkeypatch, iface="wlan1", default_if="wlan0", driver="rtl8xxxu")
-    ok, reason = WifiScan().is_available(make_ctx(tmp_path))
-    assert not ok and "rtl8xxxu" in reason and "rtl8188eus" in reason
-
-
 def test_is_available_refuses_self_link(tmp_path, monkeypatch):
     wire(monkeypatch, iface="wlan1", default_if="wlan1")
     ok, reason = WifiScan().is_available(make_ctx(tmp_path))
     assert not ok and "self-lockout" in reason
+
+
+# --- wifi_check: ready on either monitor-capable driver -----------------------
+def _wire_check(monkeypatch, driver, monitor, iface="wlan1", default_if="wlan0"):
+    monkeypatch.setattr(mod, "detect_adapter", lambda cfg: iface)
+    monkeypatch.setattr(mod, "_wifi_interfaces", lambda: [default_if, iface])
+    monkeypatch.setattr(mod, "_default_route_iface", lambda: default_if)
+    monkeypatch.setattr(mod, "_iface_driver", lambda i: driver)
+    monkeypatch.setattr(mod, "_supports_monitor", lambda i: monitor)
+    monkeypatch.setattr(mod, "_dkms_has_rtl", lambda: False)
+    monkeypatch.setattr(mod, "_module_loaded", lambda: "")
+
+
+def test_wifi_check_ready_on_rtl8188eus(tmp_path, monkeypatch):
+    _wire_check(monkeypatch, "rtl8188eus", True)
+    r = mod.wifi_check(make_ctx(tmp_path).config)
+    assert r["ready"] is True and r["monitor_ok"] is True and r["known_driver"] is True
+
+
+def test_wifi_check_ready_on_rtl8xxxu(tmp_path, monkeypatch):
+    _wire_check(monkeypatch, "rtl8xxxu", True)
+    r = mod.wifi_check(make_ctx(tmp_path).config)
+    assert r["ready"] is True and r["known_driver"] is True
+    assert r["notes"] == [] or all("does not" not in n for n in r["notes"])
+
+
+def test_wifi_check_not_ready_without_monitor(tmp_path, monkeypatch):
+    _wire_check(monkeypatch, "rtl8xxxu", False)
+    r = mod.wifi_check(make_ctx(tmp_path).config)
+    assert r["ready"] is False and r["monitor_ok"] is False
+    assert any("monitor mode" in n for n in r["notes"])
 
 
 # --- detection never assumes wlan1 by name --------------------------------

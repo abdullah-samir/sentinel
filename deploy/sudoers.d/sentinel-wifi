@@ -1,0 +1,13 @@
+# Sentinel — red.wifi_scan privilege grant.
+#
+# The dashboard/app runs as the unprivileged `sentinel` user, but putting the
+# USB adapter into monitor mode (iw/ip) and capturing (airodump-ng) require root.
+# This grants ONLY those three binaries, passwordless — nothing broad. The module
+# calls them via `sudo -n`, so a missing rule fails fast instead of hanging.
+#
+# Install:  sudo install -m 0440 deploy/sudoers.d/sentinel-wifi /etc/sudoers.d/sentinel-wifi
+# Verify:   sudo visudo -cf /etc/sudoers.d/sentinel-wifi
+#
+# NOTE: scoped to the capture/monitor binaries only. red.wifi_scan is PASSIVE —
+# it never injects/deauths; airodump-ng is run without any injection option.
+sentinel ALL=(root) NOPASSWD: /usr/sbin/iw, /usr/sbin/ip, /usr/sbin/airodump-ng

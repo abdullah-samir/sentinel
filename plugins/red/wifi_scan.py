@@ -25,6 +25,7 @@ from __future__ import annotations
 import csv
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 from pathlib import Path
@@ -46,24 +47,38 @@ RTL_USB_IDS = {("0bda", "8179"), ("0bda", "0179"), ("2357", "010c"), ("0bda", "f
 # option) counts as a pin.
 _DEFAULT_WIFI_IFACE = "wlan1"
 
-# The monitor-grade out-of-tree driver the setup helper installs. The WN722N
-# v2/v3 is otherwise claimed by the generic in-kernel `rtl8xxxu` (or legacy
-# `r8188eu`), whose monitor support is unreliable — so the module is "available"
-# only once this driver owns the adapter (install it + reboot; see
-# deploy/wifi-monitor-setup.sh).
-MONITOR_DRIVER = "rtl8188eus"
+# Drivers known to provide monitor mode for the WN722N v2/v3: the out-of-tree
+# `rtl8188eus` (what the setup helper installs on older kernels) AND the in-kernel
+# `rtl8xxxu`, which supports monitor mode on kernel 6.13+ where the out-of-tree
+# driver no longer builds. This set is ADVISORY (used only for clearer messaging);
+# availability is decided by whether monitor mode actually works — verified live
+# via `iw` supported-interface-modes (`_supports_monitor`) — not by a driver name.
+MONITOR_DRIVERS = {"rtl8188eus", "rtl8xxxu"}
 
 
 # --------------------------------------------------------------------------- #
 # low-level helpers (module-level so tests can monkeypatch them)
 # --------------------------------------------------------------------------- #
+def _priv(args: List[str]) -> List[str]:
+    """Prefix `sudo -n` to a privileged command when we are NOT already root.
+
+    The app/dashboard runs as the unprivileged `sentinel` user, but putting the
+    adapter into monitor mode (iw/ip) and capturing (airodump-ng) need root.
+    `sudo -n` never prompts — a missing sudoers rule fails fast (rc 1) with a
+    clear message instead of hanging. The tightly-scoped rule (exactly iw, ip,
+    airodump-ng) lives in deploy/sudoers.d/sentinel-wifi."""
+    if os.geteuid() == 0:
+        return list(args)
+    return ["sudo", "-n", *args]
+
+
 def _run_cmd(args: List[str], timeout: int = 10) -> Tuple[int, str]:
     """Run a command with an explicit arg list (never shell=True). Returns
-    (returncode, stdout). Never raises — a missing binary yields (127, "")."""
+    (returncode, stdout+stderr). Never raises — a missing binary yields (127, "")."""
     try:
         p = subprocess.run(args, capture_output=True, text=True,
                            timeout=timeout, check=False)
-        return p.returncode, (p.stdout or "")
+        return p.returncode, ((p.stdout or "") + (p.stderr or ""))
     except Exception:  # noqa: BLE001 — detection/cleanup must never crash a run
         return 127, ""
 
@@ -242,24 +257,29 @@ def wifi_check(config) -> dict:
     # The driver actually bound to the detected adapter is the precise signal of
     # readiness (more reliable than scanning /proc/modules).
     bound = _iface_driver(adapter) if adapter else ""
+    monitor_ok = bool(adapter) and _supports_monitor(adapter)
+    known_driver = bound in MONITOR_DRIVERS
     notes: List[str] = []
-    if bound == "r8188eu":
-        notes.append("the OLD in-kernel r8188eu owns the adapter — reboot so the "
-                     f"blacklist takes effect and {MONITOR_DRIVER} loads instead")
-    elif adapter and bound and bound != MONITOR_DRIVER:
-        notes.append(f"the adapter is bound to the generic '{bound}' driver, not the "
-                     f"monitor-grade {MONITOR_DRIVER} — run deploy/wifi-monitor-setup.sh "
-                     "then reboot")
+    if adapter and not monitor_ok:
+        if bound == "r8188eu":
+            notes.append("the legacy r8188eu owns the adapter and does not support "
+                         "monitor mode — run deploy/wifi-monitor-setup.sh then reboot")
+        else:
+            notes.append(f"the '{bound or 'unknown'}' driver on the adapter does not "
+                         "advertise monitor mode — run deploy/wifi-monitor-setup.sh "
+                         "(and reboot if it says to)")
+    elif adapter and monitor_ok and not known_driver:
+        notes.append(f"monitor mode works via the '{bound}' driver (not a recognised "
+                     "name, but accepted because it supports monitor mode)")
     if adapter and adapter == default_if:
         notes.append(f"{adapter} is the default-route interface — it will be refused "
                      "as a scan target (self-lockout guard)")
-    monitor_ok = bool(adapter) and _supports_monitor(adapter)
-    correct_driver = bound == MONITOR_DRIVER
-    ready = (bool(adapter) and adapter != default_if and monitor_ok and correct_driver)
+    # Readiness is driven by ACTUAL monitor capability (iw), not the driver name.
+    ready = bool(adapter) and adapter != default_if and monitor_ok
     return {
         "driver_dkms": _dkms_has_rtl(),
         "module_loaded": bound or _module_loaded(),
-        "correct_driver": correct_driver,
+        "known_driver": known_driver,
         "wifi_interfaces": wifis,
         "default_iface": default_if,
         "adapter_iface": adapter or "",
@@ -376,37 +396,41 @@ class WifiScan(Module):
         reason = _self_link_reason(iface)
         if reason:
             return (False, reason)
-        drv = _iface_driver(iface)
-        if drv != MONITOR_DRIVER:
-            return (False, f"adapter on {iface} uses the '{drv or 'unknown'}' driver, "
-                           f"not the monitor-grade {MONITOR_DRIVER} — run "
-                           "deploy/wifi-monitor-setup.sh then reboot "
-                           "(`sentinel wifi-check` to verify)")
+        # Availability is decided by whether monitor mode ACTUALLY works (checked
+        # live via `iw` supported-interface-modes), not by a hardcoded driver
+        # name — so both the out-of-tree `rtl8188eus` and the in-kernel `rtl8xxxu`
+        # (monitor-capable on kernel 6.13+) are accepted.
         if not _supports_monitor(iface):
-            return (False, f"{iface} cannot enter monitor mode "
-                           "(driver not ready? reboot after setup)")
+            drv = _iface_driver(iface)
+            return (False, f"{iface} (driver '{drv or 'unknown'}') does not support "
+                           "monitor mode — run deploy/wifi-monitor-setup.sh "
+                           "(and reboot if it says to), then `sentinel wifi-check`")
         return (True, "")
 
-    # --- monitor-mode control (all via iw/ip; NEVER airmon-ng) ------------
+    # --- monitor-mode control (iw/ip via sudo -n; NEVER airmon-ng) --------
     def _enable_monitor(self, ctx, iface: str) -> None:
         ctx.log.info("wifi_scan: enabling monitor mode on %s via iw/ip "
                      "(NOT airmon-ng; the Pi's networking is untouched)", iface)
-        _run_cmd(["ip", "link", "set", iface, "down"])
-        rc, _ = _run_cmd(["iw", "dev", iface, "set", "type", "monitor"])
-        _run_cmd(["ip", "link", "set", iface, "up"])
+        _run_cmd(_priv(["ip", "link", "set", iface, "down"]))
+        rc, out = _run_cmd(_priv(["iw", "dev", iface, "set", "type", "monitor"]))
+        _run_cmd(_priv(["ip", "link", "set", iface, "up"]))
         if rc != 0:
-            raise RuntimeError(f"could not set {iface} to monitor mode (rc={rc})")
+            hint = ("needs root — the sudoers rule for iw/ip is missing "
+                    "(see deploy/sudoers.d/sentinel-wifi)") if os.geteuid() != 0 \
+                else "iw rejected the mode change"
+            raise RuntimeError(f"could not set {iface} to monitor mode (rc={rc}; {hint})"
+                               + (f": {out.strip()}" if out.strip() else ""))
 
     def _set_channel(self, ctx, iface: str, channel: str) -> None:
-        _run_cmd(["iw", "dev", iface, "set", "channel", channel])
+        _run_cmd(_priv(["iw", "dev", iface, "set", "channel", channel]))
 
     def _restore_managed(self, ctx, iface: str) -> None:
         """Guaranteed cleanup — return the adapter to managed mode. Defensive:
         never raises, so it is safe to call from a finally block."""
         try:
-            _run_cmd(["ip", "link", "set", iface, "down"])
-            _run_cmd(["iw", "dev", iface, "set", "type", "managed"])
-            _run_cmd(["ip", "link", "set", iface, "up"])
+            _run_cmd(_priv(["ip", "link", "set", iface, "down"]))
+            _run_cmd(_priv(["iw", "dev", iface, "set", "type", "managed"]))
+            _run_cmd(_priv(["ip", "link", "set", iface, "up"]))
             ctx.log.info("wifi_scan: restored %s to managed mode", iface)
         except Exception as e:  # noqa: BLE001
             ctx.log.error("wifi_scan: failed to restore %s to managed: %s", iface, e)
@@ -421,6 +445,7 @@ class WifiScan(Module):
         if channel:
             args += ["-c", channel]
         args.append(iface)
+        args = _priv(args)            # airodump needs root to capture on the monitor iface
         try:
             proc = subprocess.Popen(args, stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL)
@@ -429,11 +454,18 @@ class WifiScan(Module):
         try:
             proc.wait(timeout=duration)          # normally times out (we want the full run)
         except subprocess.TimeoutExpired:
-            proc.terminate()                     # SIGTERM -> airodump flushes CSV + exits
+            # SIGINT (not SIGTERM/SIGKILL): airodump handles it, writes a final CSV,
+            # and exits cleanly. Under `sudo` this is forwarded to airodump, so the
+            # root process does not linger holding the interface in monitor mode.
+            proc.send_signal(signal.SIGINT)
             try:
-                proc.wait(timeout=5)
+                proc.wait(timeout=8)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                proc.send_signal(signal.SIGINT)  # second nudge, then give up gracefully
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.terminate()
 
     def _read_csv(self, outdir: Path) -> str:
         """Return the airodump AP/station CSV text (not the .kismet/.log CSVs)."""
@@ -484,6 +516,24 @@ class WifiScan(Module):
             self._run_airodump(ctx, iface, outdir, duration, channel)
             aps, clients = _parse_airodump_csv(self._read_csv(outdir))
             self._emit(ctx, aps, clients)
+            if not aps and not clients:
+                # Monitor mode was accepted but airodump saw nothing. In a populated
+                # area this usually means the driver's monitor RX does not actually
+                # deliver frames — a known limitation of the in-kernel rtl8xxxu for
+                # the RTL8188EU/EUS (iw advertises monitor, but no packets arrive).
+                drv = _iface_driver(iface)
+                ctx.store.add_finding(
+                    module=self.manifest.name, type="module_status",
+                    severity=Severity.INFO, target=iface,
+                    title="Wi-Fi scan captured no frames",
+                    detail=(f"Monitor mode enabled on {iface} (driver '{drv or '?'}') but "
+                            f"airodump-ng captured 0 APs/clients in {duration}s. If networks "
+                            "are in range this points to the driver not delivering monitor "
+                            "frames — the in-kernel rtl8xxxu does not capture for this chip; "
+                            "install the out-of-tree rtl8188eus driver (see "
+                            "deploy/wifi-monitor-setup.sh)."),
+                    evidence=f"0 APs after {duration}s on driver {drv or '?'}",
+                    tags=["wireless", "diagnostic"])
             ctx.log.info("wifi_scan: complete — %d AP(s), %d client(s)",
                          len(aps), len(clients))
         except Exception as e:  # noqa: BLE001 — a scan failure must not crash the run

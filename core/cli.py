@@ -253,12 +253,12 @@ def cmd_wifi_check(args) -> int:
     print("Sentinel Wi-Fi monitor check:")
     print(f"  rtl8188eus DKMS driver installed: {yn(r['driver_dkms'])}")
     loaded = r["module_loaded"] or "(none)"
-    if r.get("correct_driver"):
-        loaded += "  (correct)"
+    if r.get("monitor_ok"):
+        loaded += "  (monitor-capable)" if r.get("known_driver") else "  (monitor-capable, accepted)"
     elif r["module_loaded"] == "r8188eu":
-        loaded += "  <- OLD in-kernel driver; reboot needed"
+        loaded += "  <- legacy driver; no monitor mode — run setup + reboot"
     elif r["module_loaded"]:
-        loaded += "  <- generic driver; install rtl8188eus + reboot"
+        loaded += "  <- no monitor mode on this driver — run setup"
     print(f"  adapter driver: {loaded}")
     print(f"  Wi-Fi interfaces: {', '.join(r['wifi_interfaces']) or '(none)'}")
     print(f"  default-route interface (never the scan target): {r['default_iface'] or '(none)'}")

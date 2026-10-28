@@ -77,23 +77,40 @@ What the setup script does, in order:
    **kernel headers** (`raspberrypi-kernel-headers`, or `linux-headers-$(uname -r)`).
    It errors out clearly if the headers tree is missing (the DKMS build fails
    without it).
-2. Clones and DKMS-installs the driver from GitHub
-   (`https://github.com/aircrack-ng/rtl8188eus`) — **not** from apt.
-3. Blacklists the in-kernel drivers that would otherwise claim the chip —
-   `r8188eu` **and** `rtl8xxxu` (the latter is what binds the WN722N v2/v3 on
-   current Raspberry Pi OS / Debian) — via
+2. Clones the driver from GitHub (`aircrack-ng/rtl8188eus`) — **not** from apt —
+   and DKMS-installs it, deriving the source dir name `/usr/src/<name>-<version>`
+   from the clone's own `dkms.conf` (e.g. `realtek-rtl8188eus-5.3.9~20221105`).
+   Getting this name wrong is what caused the original
+   *"Could not find module source directory … does not exist"* failure.
+3. Blacklists `r8188eu` (always — the broken legacy driver). It blacklists
+   `rtl8xxxu` **only when** an out-of-tree driver actually built, via
    `/etc/modprobe.d/sentinel-rtl8188eus-blacklist.conf`. The Pi's built-in Wi-Fi
    uses `brcmfmac` and is unaffected.
-4. Verifies the driver is registered (`dkms status` lists `rtl8188eus`).
-5. Tells you to **reboot** — required because the blacklist and the new module
-   only take effect on a clean boot.
+4. Verifies the driver is registered (`dkms status`) and tells you to **reboot**.
+
+### Kernel 6.13+ (e.g. this Pi on 6.18): the out-of-tree driver does NOT build
+The classic `aircrack-ng/rtl8188eus` driver (last real update 2022) **fails to
+compile on kernel 6.13+** — kbuild changed how `$(src)` resolves and the kernel
+removed the timer APIs (`del_timer_sync`, `from_timer`) the driver uses — and
+morrownr's fork has been **removed upstream**. On these kernels the **in-kernel
+`rtl8xxxu`** driver already provides monitor mode for this chip (verify with
+`iw phy <phy> info` → `* monitor`). The setup script detects a failed build,
+**prints the compiler error**, and falls back to `rtl8xxxu` **without** blacklisting
+it (so the working driver is never disabled); no reboot is needed in that case.
+
+> **App-side caveat (core, not deployment):** `red.wifi_scan` currently gates
+> availability on the adapter being bound to a driver literally named
+> `rtl8188eus`. When the working driver is the in-kernel `rtl8xxxu` (as on 6.18),
+> the module reports *unavailable* even though monitor mode works. Making it use
+> `rtl8xxxu` is a one-line change to `MONITOR_DRIVER`/the driver check in
+> `plugins/red/wifi_scan.py` — a core change, intentionally out of scope for this
+> deployment helper.
 
 **`sentinel wifi-check`** auto-detects the adapter by **driver/chipset, not by
 interface name** (it never assumes `wlan1`), and reports: is the DKMS driver
-installed; is the correct module loaded (or is the old `r8188eu` still loaded →
-reboot needed); which interface is the USB adapter; and whether monitor mode is
-available. It never treats the Pi's built-in / default-route interface as the
-scan target. **Re-run `sentinel wifi-check` after any kernel update.**
+installed; which driver is bound; which interface is the USB adapter; and whether
+monitor mode is available. It never treats the Pi's built-in / default-route
+interface as the scan target. **Re-run `sentinel wifi-check` after any kernel update.**
 
 Safety: the module enables monitor mode with `iw`/`ip` on that one adapter and
 **never** runs `airmon-ng check kill` or touches NetworkManager/wpa_supplicant,
@@ -101,6 +118,25 @@ so the Pi's networking and your SSH session are never dropped; it also refuses t
 use the interface carrying the default route or the active SSH connection. Until
 the adapter + driver are set up, the `wifi_scan` workflow shows **unavailable**
 in the dashboard and is skipped cleanly.
+
+### Privilege (sudoers) — required for monitor mode
+Entering monitor mode (`iw`/`ip`) and capturing (`airodump-ng`) need root, but the
+app/dashboard runs as the unprivileged `sentinel` user. The module runs exactly
+those three binaries via `sudo -n`, backed by a **tightly-scoped** rule at
+`deploy/sudoers.d/sentinel-wifi` (installed to `/etc/sudoers.d/sentinel-wifi`,
+mode 0440, by `wifi-monitor-setup.sh`). It grants `sentinel` passwordless sudo for
+`/usr/sbin/iw`, `/usr/sbin/ip`, `/usr/sbin/airodump-ng` **only** — nothing broad.
+Without it the scan fails with *"could not set wlan1 to monitor mode (rc=255)"*.
+
+### Capture limitation on kernel 6.13+ (in-kernel rtl8xxxu)
+On kernels where the out-of-tree `rtl8188eus` driver does not build, the adapter
+runs on the in-kernel `rtl8xxxu`. That driver **advertises** monitor mode and
+`iw set type monitor` succeeds, but for the RTL8188EU/EUS it **does not actually
+deliver RX frames** — a scan enters monitor cleanly yet captures 0 APs (confirmed
+with `tcpdump`: 0 packets on a channel with a strong AP). When this happens the
+module emits an INFO *"Wi-Fi scan captured no frames"* finding pointing here. To
+get real captures you need the out-of-tree `rtl8188eus` driver (a kernel old
+enough for it to build) or a different monitor-capable adapter.
 
 ## Security (read this)
 This deployment is **public + network-scan-capable + unattended**. Therefore:
