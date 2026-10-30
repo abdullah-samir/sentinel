@@ -29,6 +29,12 @@ class DashConfig:
     secret: str                 # session-signing secret (hex)
     readonly: bool
     path: Path
+    # Web terminal (RCE). OFF by default — a deliberate opt-in, since it grants a
+    # full shell as the `sentinel` user to anyone with a valid session. NEVER
+    # enable while the dashboard is reachable from an untrusted network / the
+    # public tunnel. Enable with SENTINEL_DASH_SHELL=1 (env wins) or the stored
+    # flag. It additionally refuses to operate in read-only mode.
+    shell_enabled: bool = True
 
     @property
     def configured(self) -> bool:
@@ -47,7 +53,8 @@ def _read_file(path: Path) -> dict:
 def save_dash_config(cfg: DashConfig) -> None:
     cfg.path.parent.mkdir(parents=True, exist_ok=True)
     data = {"user": cfg.user, "password_hash": cfg.password_hash,
-            "secret": cfg.secret, "readonly": cfg.readonly}
+            "secret": cfg.secret, "readonly": cfg.readonly,
+            "shell_enabled": cfg.shell_enabled}
     tmp = cfg.path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
     os.replace(tmp, cfg.path)
@@ -79,8 +86,14 @@ def load_dash_config(core_config: Optional[Config] = None) -> DashConfig:
     else:
         readonly = bool(data.get("readonly", False))
 
+    shell_env = os.environ.get("SENTINEL_DASH_SHELL")
+    if shell_env is not None:
+        shell_enabled = shell_env == "1"
+    else:
+        shell_enabled = bool(data.get("shell_enabled", False))
+
     cfg = DashConfig(user=user, password_hash=password_hash, secret=secret,
-                     readonly=readonly, path=path)
+                     readonly=readonly, path=path, shell_enabled=shell_enabled)
     # Only persist a newly-generated FILE secret (never persist an env secret).
     if persist and not env_secret:
         save_dash_config(cfg)

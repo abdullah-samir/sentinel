@@ -568,3 +568,28 @@
 2026-10-28 23:41:55,142 INFO    sentinel.run: wifi_scan: complete — 0 AP(s), 0 client(s)
 2026-10-28 23:41:55,273 INFO    sentinel.run: wifi_scan: restored wlan1 to managed mode
 2026-10-28 23:41:55,293 INFO    sentinel.orchestrator: run 2026-10-28_20-41_wifi-scan_10.10.1.0-24_1840b7 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-29 00:04:03,354 WARNING sentinel.orchestrator: workflow step 'red.wifi_scan' is not a registered module; skipping
+2026-10-29 00:04:03,361 INFO    sentinel.orchestrator: run 2026-10-28_21-04_wifi-scan_d29d12: workflow=wifi_scan target='(none)' steps=[]
+2026-10-29 00:04:03,387 INFO    sentinel.orchestrator: run 2026-10-28_21-04_wifi-scan_d29d12 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-29 00:04:40,555 INFO    sentinel.orchestrator: run 2026-10-28_21-04_wifi-scan_10.10.1.0-24_fb4263: workflow=wifi_scan target='10.10.1.0/24' steps=['red.wifi_scan']
+2026-10-29 00:04:40,595 INFO    sentinel.orchestrator: step red.wifi_scan skipped: no RTL8188EUS monitor adapter detected (run `sentinel wifi-check`)
+2026-10-29 00:04:40,609 INFO    sentinel.orchestrator: run 2026-10-28_21-04_wifi-scan_10.10.1.0-24_fb4263 complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-29 00:05:38,578 INFO    sentinel.orchestrator: run 2026-10-28_21-05_wifi-scan_10.10.1.0-24_c2f3ba: workflow=wifi_scan target='10.10.1.0/24' steps=['red.wifi_scan']
+2026-10-29 00:05:38,627 INFO    sentinel.orchestrator: step red.wifi_scan: running
+2026-10-29 00:05:38,643 INFO    sentinel.run: wifi_scan: enabling monitor mode on wlan1 via iw/ip (NOT airmon-ng; the Pi's networking is untouched)
+2026-10-29 00:05:38,762 INFO    sentinel.run: wifi_scan: capturing on wlan1 for 30s (channel-hopping)
+2026-10-29 00:06:09,032 INFO    sentinel.run: wifi_scan: complete — 0 AP(s), 0 client(s)
+2026-10-29 00:06:09,148 INFO    sentinel.run: wifi_scan: restored wlan1 to managed mode
+2026-10-29 00:06:09,168 INFO    sentinel.orchestrator: run 2026-10-28_21-05_wifi-scan_10.10.1.0-24_c2f3ba complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 1, 'findings_by_severity': {'info': 1, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-29 22:56:58,921 INFO    sentinel.orchestrator: run 2026-10-29_19-56_esp-monitor_10.10.1.0-24_9bb31d: workflow=esp_monitor target='10.10.1.0/24' steps=['blue.esp_sensor']
+2026-10-29 22:56:58,961 INFO    sentinel.orchestrator: step blue.esp_sensor: running
+2026-10-29 22:56:58,964 INFO    sentinel.run: esp_sensor: reading /dev/ttyACM0 @ 115200 for 8s (serial)
+2026-10-29 22:57:07,167 INFO    sentinel.run: esp_sensor: serial — 0 detection(s) -> 0 finding(s), 2 heartbeat(s), 0 malformed
+2026-10-29 22:57:07,194 INFO    sentinel.orchestrator: run 2026-10-29_19-56_esp-monitor_10.10.1.0-24_9bb31d complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-30 15:24:47,838 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=127.0.0.1 (full shell granted)
+2026-10-30 15:24:47,876 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=127.0.0.1
+2026-10-30 15:41:33,678 INFO    sentinel.orchestrator: run 2026-10-30_13-41_esp-monitor_10.10.1.0-24_dfa9d0: workflow=esp_monitor target='10.10.1.0/24' steps=['blue.esp_sensor']
+2026-10-30 15:41:33,733 INFO    sentinel.orchestrator: step blue.esp_sensor: running
+2026-10-30 15:41:33,735 INFO    sentinel.run: esp_sensor: reading /dev/ttyACM0 @ 115200 for 30s (serial)
+2026-10-30 15:42:03,893 INFO    sentinel.run: esp_sensor: serial — 0 detection(s) -> 0 finding(s), 6 heartbeat(s), 0 malformed
+2026-10-30 15:42:03,919 INFO    sentinel.orchestrator: run 2026-10-30_13-41_esp-monitor_10.10.1.0-24_dfa9d0 complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}

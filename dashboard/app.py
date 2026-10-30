@@ -8,6 +8,7 @@ require a valid signed session.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shutil
@@ -19,10 +20,11 @@ import asyncio
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import (
     FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse,
 )
+from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import escape
 
@@ -43,6 +45,8 @@ from dashboard.live import attach_log_capture, detach_log_capture, sse
 from dashboard.schedule import Scheduler
 from dashboard.state import RunState
 from dashboard import assets as assets_mod
+from dashboard import esp as esp_mod
+from dashboard import terminal as terminal_mod
 from dashboard import launcher, manage, settings as settings_mod
 from reporting import history, risk, report_engine
 
@@ -108,7 +112,7 @@ def create_app(core_config: Optional[Config] = None,
                       autoescape=select_autoescape(["html", "xml"]),
                       trim_blocks=True, lstrip_blocks=True)
     env.globals.update(sev_order=SEV_ORDER, sev_color=SEV_COLOR, grade_color=GRADE_COLOR,
-                       version=_version())
+                       version=_version(), shell_enabled=dash_config.shell_enabled)
 
     @asynccontextmanager
     async def _lifespan(app):                 # fires under uvicorn / `with TestClient`
@@ -126,6 +130,11 @@ def create_app(core_config: Optional[Config] = None,
     app.state.run_state = run_state
     app.state.limiter = limiter
     app.state.dash_config = dash_config
+
+    # Offline static assets (vendored xterm.js for the terminal, etc.).
+    _static = Path(__file__).parent / "static"
+    if _static.is_dir():
+        app.mount("/static", StaticFiles(directory=str(_static)), name="static")
 
     # --- helpers ----------------------------------------------------------
     def current_user(request: Request) -> Optional[str]:
@@ -512,6 +521,92 @@ def create_app(core_config: Optional[Config] = None,
             return HTMLResponse(f"Invalid run id: {escape(str(e))}", status_code=400)
         return RedirectResponse("/runs", status_code=303)
 
+    # --- ESP wireless sensor panel ---------------------------------------
+    @app.get("/esp")
+    def esp_page(request: Request):
+        if not current_user(request):
+            return login_redirect()
+        wfs = load_workflows(core_config)
+        return render("esp.html", request, nav_active="esp",
+                      esp=esp_mod.esp_panel(core_config),
+                      can_run=("esp_monitor" in wfs) and not dash_config.readonly,
+                      active=run_state.current())
+
+    # --- web terminal (RCE; off by default, trusted networks only) --------
+    def _terminal_denied_reason() -> Optional[str]:
+        if not dash_config.shell_enabled:
+            return ("The web terminal is disabled. It grants a full shell and must "
+                    "only be used on a trusted, non-public network. Enable it "
+                    "deliberately with SENTINEL_DASH_SHELL=1 and restart.")
+        if dash_config.readonly:
+            return "The web terminal is disabled in read-only mode."
+        return None
+
+    @app.get("/terminal")
+    def terminal_page(request: Request):
+        if not current_user(request):
+            return login_redirect()
+        reason = _terminal_denied_reason()
+        if reason:
+            return render("terminal.html", request, nav_active="terminal",
+                          disabled=True, disabled_reason=reason)
+        return render("terminal.html", request, nav_active="terminal", disabled=False,
+                      disabled_reason="")
+
+    @app.websocket("/ws/terminal")
+    async def ws_terminal(ws: WebSocket):
+        # Authenticate from the signed session cookie BEFORE accepting, and honor
+        # the same gates as the page (enabled + not read-only).
+        tok = ws.cookies.get(SESSION_COOKIE)
+        user = read_session(tok, dash_config.secret) if tok else None
+        if not user or not dash_config.shell_enabled or dash_config.readonly:
+            await ws.close(code=1008)                 # policy violation
+            return
+        await ws.accept()
+        client_ip = ws.client.host if ws.client else "?"
+        log.warning("TERMINAL session OPEN user=%s ip=%s (full shell granted)",
+                    user, client_ip)
+        loop = asyncio.get_event_loop()
+        sess = terminal_mod.PtySession(cwd=str(core_config.root))
+        stop = threading.Event()
+
+        def pump() -> None:
+            while not stop.is_set() and sess.alive():
+                data = sess.read(0.1)
+                if not data:
+                    continue
+                fut = asyncio.run_coroutine_threadsafe(
+                    ws.send_text(data.decode("utf-8", "replace")), loop)
+                try:
+                    fut.result(timeout=5)
+                except Exception:  # noqa: BLE001 — client gone / closing
+                    break
+            stop.set()
+            asyncio.run_coroutine_threadsafe(_close_quietly(ws), loop)
+
+        reader = threading.Thread(target=pump, name="terminal-pump", daemon=True)
+        reader.start()
+        try:
+            while True:
+                msg = await ws.receive_text()
+                try:
+                    obj = json.loads(msg)
+                except (ValueError, TypeError):
+                    continue
+                kind = obj.get("type")
+                if kind == "input":
+                    sess.write(str(obj.get("data", "")).encode("utf-8"))
+                elif kind == "resize":
+                    sess.resize(obj.get("rows", 24), obj.get("cols", 80))
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:  # noqa: BLE001
+            log.info("terminal ws error: %s", e)
+        finally:
+            stop.set()
+            sess.close()
+            log.warning("TERMINAL session CLOSE user=%s ip=%s", user, client_ip)
+
     # --- assets inventory -------------------------------------------------
     @app.get("/assets")
     def assets_page(request: Request):
@@ -667,6 +762,14 @@ def create_app(core_config: Optional[Config] = None,
         return JSONResponse({"modules": module_rows()})
 
     return app
+
+
+async def _close_quietly(ws: WebSocket) -> None:
+    """Close a WebSocket, ignoring errors (it may already be closing)."""
+    try:
+        await ws.close()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _bg_run(workflow: str, target: str, run_config: Config, run_state: RunState,

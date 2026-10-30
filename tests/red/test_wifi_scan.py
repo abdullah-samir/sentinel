@@ -260,7 +260,12 @@ def test_airodump_args_are_passive(tmp_path, monkeypatch):
     assert args[0] == "airodump-ng" and args[-1] == "wlan1"
     assert "--output-format" in args and "csv" in args
     assert args[args.index("-c") + 1] == "6"                 # channel lock passed through
-    flat = " ".join(args)
+    # Scan the COMMAND flags for forbidden tokens, excluding the -w output-prefix
+    # value (a filesystem path the operator doesn't control — it can legitimately
+    # contain substrings like "-0", e.g. a pytest tmp dir named "pytest-0").
+    scanned = [a for i, a in enumerate(args)
+               if not (i > 0 and args[i - 1] == "-w")]
+    flat = " ".join(scanned)
     for forbidden in ("--deauth", "-0", "aireplay", "airmon", "--inj", "attack"):
         assert forbidden not in flat
 

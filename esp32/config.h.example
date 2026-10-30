@@ -1,0 +1,84 @@
+// Sentinel ESP32-S3 Wi-Fi attack DETECTION sensor — configuration template.
+//
+// DEFENSIVE / LAB-ONLY. This sensor only listens and detects. It never
+// transmits 802.11 frames, never deauths, never injects, never attacks.
+//
+// Copy this file to  config.h  (which is git-ignored) and fill in real values:
+//     cp config.h.example config.h
+// Wi-Fi credentials and thresholds live ONLY in config.h, never committed.
+#pragma once
+
+// ===========================================================================
+//  Operating mode  (mutually exclusive — enforced at runtime, not just here)
+// ===========================================================================
+//  MODE_SNIFFER   : promiscuous sniffing only. Wi-Fi station + HTTP DISABLED.
+//                   May channel-hop or lock to one channel. Serial reporting only.
+//  MODE_CONNECTED : joins Wi-Fi for HTTP reporting. Sniffs ONLY on the connected
+//                   AP's channel (no hopping — the radio cannot hop while
+//                   associated as a station). Serial + HTTP reporting.
+#define MODE_SNIFFER   0
+#define MODE_CONNECTED 1
+
+#define OPERATING_MODE MODE_SNIFFER
+
+// ===========================================================================
+//  Channel strategy
+// ===========================================================================
+// A detection sensor should normally sit on ONE channel so it reliably sees
+// every attack frame there. Fixed channel is the default. Channel-hopping is
+// opt-in and only valid in MODE_SNIFFER: it helps you discover activity across
+// channels but WILL miss attacks on the other channels during each dwell.
+#define SNIFF_CHANNEL   6            // fixed channel (1..13) when not hopping
+#define SNIFF_HOP       false        // true = hop (MODE_SNIFFER only)
+#define HOP_DWELL_MS    300          // ms to dwell on each channel when hopping
+#define HOP_CHANNELS    {1, 6, 11}   // channels to cycle through when hopping
+
+// ===========================================================================
+//  Wi-Fi + HTTP  (MODE_CONNECTED only)
+// ===========================================================================
+#define WIFI_SSID       "YOUR_WIFI_SSID"
+#define WIFI_PASSWORD   "YOUR_WIFI_PASSWORD"
+#define WIFI_CONNECT_TIMEOUT_MS 15000   // give up joining after this; serial still works
+#define HTTP_SERVER_PORT 80
+
+// Optional outbound push of detections to the Sentinel Pi (OFF by default).
+// When true, each new detection is also POSTed as JSON to PI_POST_URL.
+#define ENABLE_POST     false
+#define PI_POST_URL     "http://10.10.1.99:8000/api/esp32/detections"
+
+// ===========================================================================
+//  Detector thresholds (sliding windows)
+// ===========================================================================
+// Deauth / disassoc flood: flag when EITHER the per-source rate OR the
+// aggregate per-channel rate exceeds its threshold within the window. Floods
+// often use spoofed / broadcast / randomized sources, so the aggregate catches
+// what the per-source counter misses.
+#define DEAUTH_WINDOW_MS         1000   // sliding window for deauth/disassoc
+#define DEAUTH_PER_SRC_THRESHOLD 10     // frames from one source MAC in the window
+#define DEAUTH_AGG_THRESHOLD     30     // frames on the channel (any source) in the window
+
+// Beacon flood / SSID spam.
+#define BEACON_WINDOW_MS         1000   // sliding window for beacons
+#define BEACON_RATE_THRESHOLD    80     // total beacons on the channel in the window
+#define BEACON_SSID_PER_SRC      8      // distinct SSIDs from one source MAC in the window
+
+// Evil twin (best-effort): same SSID advertised by >= N distinct BSSIDs.
+#define EVIL_TWIN_WINDOW_MS      20000  // remember BSSID<->SSID pairings this long
+#define EVIL_TWIN_MIN_BSSIDS     2      // distinct BSSIDs for one SSID to flag
+
+// ===========================================================================
+//  Reporting
+// ===========================================================================
+#define HEARTBEAT_INTERVAL_MS    5000   // emit a status/heartbeat line this often
+#define DETECTION_DEDUP_MS       3000   // suppress repeat alerts for the same
+                                        // (type, offender) within this window
+
+// ===========================================================================
+//  Status LED (optional)
+// ===========================================================================
+// Slow blink = sniffing/alive; brief flash = a detection fired.
+// NOTE: the esp32-s3-devkitc-1 on-board LED is an addressable RGB (WS2812) on
+// GPIO48 and will NOT respond to plain digitalWrite(). Leave this at -1 to
+// disable, or set it to a GPIO wired to an ordinary LED.
+#define STATUS_LED_PIN  -1
+#define STATUS_LED_ACTIVE_HIGH 1        // 1 = HIGH turns the LED on

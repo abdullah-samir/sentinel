@@ -111,6 +111,10 @@ class Asset:
     channel: str = ""                  # Wi-Fi channel (string; "" = unknown)
     encryption: str = ""               # e.g. "WPA2", "WEP", "OPEN"
     signal: str = ""                   # signal/power as reported (dBm string)
+    # --- generic per-module metadata (additive; defaults keep other assets
+    # byte-identical). e.g. blue.esp_sensor stashes the ESP's latest
+    # heartbeat/status here (mode, channel, frames_seen, uptime, alive, ...).
+    extra: Dict = field(default_factory=dict)
 
 
 @dataclass

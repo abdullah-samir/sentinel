@@ -15,5 +15,11 @@ capture_only:
 wifi_scan:
   steps: [red.wifi_scan]
 
+# Ingest wireless-attack detections from the ESP32-S3 detector node (serial is
+# primary; HTTP if esp_url is set). requires_hw => unavailable/skipped until the
+# ESP sensor is connected (see esp32/ firmware + /esp dashboard panel).
+esp_monitor:
+  steps: [blue.esp_sensor]
+
 full_audit:
   steps: [red.recon_nmap, blue.capture_tshark, ml.detector_template]

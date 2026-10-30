@@ -17,3 +17,7 @@ deploy/sentinel.env
 # Dashboard runtime state (schedules + persisted settings).
 data/schedules.json
 data/dashboard_settings.json
+# ESP32 sensor: local config holds Wi-Fi creds + thresholds — keep the .example committed.
+esp32/config.h
+# PlatformIO build output.
+esp32/.pio/

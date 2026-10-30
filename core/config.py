@@ -49,6 +49,14 @@ class Config:
     capture_max_filesize_kb: int = 51200  # stop: -a filesize:
     capture_filter: str = ""            # optional BPF, e.g. "not port 22" (exclude SSH)
 
+    # --- ESP32-S3 wireless sensor (blue.esp_sensor reads these) -----------
+    # Serial is PRIMARY (the flashed firmware defaults to MODE_SNIFFER = serial
+    # only). esp_url is the alternate HTTP path for a MODE_CONNECTED reflash.
+    esp_serial_port: str = "/dev/ttyACM0"  # S3 native-USB / UART bridge port
+    esp_baud: int = 115200
+    esp_url: str = ""                      # e.g. http://10.10.1.50 (MODE_CONNECTED)
+    esp_listen_seconds: int = 30           # bounded read/poll duration
+
     # --- derived paths (never serialized into run JSON) -------------------
     @property
     def results_dir(self) -> Path:
@@ -138,4 +146,19 @@ class Config:
         cfilter = os.environ.get("SENTINEL_CAPTURE_FILTER")
         if cfilter is not None:
             cfg.capture_filter = cfilter
+        # ESP32-S3 wireless sensor
+        port = os.environ.get("SENTINEL_ESP_SERIAL_PORT")
+        if port:
+            cfg.esp_serial_port = port
+        esp_url = os.environ.get("SENTINEL_ESP_URL")
+        if esp_url is not None:
+            cfg.esp_url = esp_url
+        for env_key, attr in (("SENTINEL_ESP_BAUD", "esp_baud"),
+                              ("SENTINEL_ESP_LISTEN_SECONDS", "esp_listen_seconds")):
+            raw = os.environ.get(env_key)
+            if raw:
+                try:
+                    setattr(cfg, attr, int(raw))
+                except ValueError:
+                    pass
         return cfg

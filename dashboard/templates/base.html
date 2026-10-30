@@ -77,6 +77,10 @@
     <a class="nav {{ 'active' if nav_active == 'schedule' }}" href="/schedule">Schedule</a>
     <a class="nav {{ 'active' if nav_active == 'runs' }}" href="/runs">Runs</a>
     <a class="nav {{ 'active' if nav_active == 'assets' }}" href="/assets">Assets</a>
+    <a class="nav {{ 'active' if nav_active == 'esp' }}" href="/esp">ESP sensor</a>
+    {% if shell_enabled %}
+    <a class="nav {{ 'active' if nav_active == 'terminal' }}" href="/terminal">Terminal</a>
+    {% endif %}
     <a class="nav {{ 'active' if nav_active == 'modules' }}" href="/modules">Modules</a>
     <a class="nav {{ 'active' if nav_active == 'settings' }}" href="/settings">Settings</a>
     <a class="nav" href="/health" target="_blank" rel="noopener">Health &#8599;</a>

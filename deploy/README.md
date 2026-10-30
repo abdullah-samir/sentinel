@@ -138,6 +138,30 @@ module emits an INFO *"Wi-Fi scan captured no frames"* finding pointing here. To
 get real captures you need the out-of-tree `rtl8188eus` driver (a kernel old
 enough for it to build) or a different monitor-capable adapter.
 
+## Web terminal (full shell) — OFF by default
+
+The dashboard can serve an interactive **PTY terminal** (real `bash`, via
+`/terminal`, xterm.js over a WebSocket) so you can administer the Pi from the
+browser. It runs as the unprivileged `sentinel` user — but that user has
+passwordless sudo for `iw`/`ip`/`airodump-ng`, so treat it as near-full control.
+
+**This is arbitrary remote code execution by design.** It is therefore:
+- **Disabled by default.** Enable it deliberately: set `SENTINEL_DASH_SHELL=1`
+  in `deploy/sentinel.env` (env wins) or the stored `shell_enabled` flag, then
+  `deploy/sentinel-ctl.sh restart`. When disabled, `/terminal` shows a notice and
+  the WebSocket handshake is refused.
+- **Login + session required**, on both the page and the WebSocket (the signed
+  session cookie is validated before the socket is accepted; CSRF-protected login).
+- **Refused in read-only mode** (`safe` / `SENTINEL_DASH_READONLY=1`).
+- **Audited** — every session open/close is logged with the user and client IP
+  (`deploy/sentinel-ctl.sh logs`).
+
+**Only enable it on a trusted, non-public network.** Do NOT enable it while the
+Cloudflare tunnel / any public URL is live — that would expose a shell to the
+internet behind only the admin password. Take the tunnel down first
+(`sudo systemctl stop sentinel-tunnel.service`), or bind the dashboard to
+localhost / a VPN, before turning the terminal on.
+
 ## Security (read this)
 This deployment is **public + network-scan-capable + unattended**. Therefore:
 - **Use a long, random admin password** (e.g. `openssl rand -base64 24`). Anyone who

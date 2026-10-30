@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}ESP sensor{% endblock %}
+{% block content %}
+<h1>ESP wireless sensor</h1>
+
+<div class="banner">
+  Passive 802.11 attack-detection node (ESP32-S3). This panel shows the latest
+  ingest from the <span class="mono">esp_monitor</span> run — the sensor never
+  transmits; it only reports what it hears over serial (or HTTP).
+</div>
+
+{% if not esp.found %}
+  <div class="panel">
+    <div class="empty">
+      No ESP data yet. Connect the ESP32-S3 sensor and run
+      <span class="mono">esp_monitor</span>
+      {% if can_run %}
+        — <form method="post" action="/run/esp_monitor" style="display:inline">
+            <input type="hidden" name="csrf" value="{{ csrf_token }}">
+            <input type="hidden" name="target" value="">
+            <button class="btn primary sm" type="submit"
+                    {{ 'disabled' if active }}>Run esp_monitor now</button>
+          </form>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  {% set st = esp.status %}
+  <div class="cards">
+    <div class="card">
+      <div class="n" style="color:{{ '#2DD4BF' if esp.alive else '#E5484D' }}">
+        {{ 'ALIVE' if esp.alive else ('BUSY' if esp.busy else 'SILENT') }}
+      </div>
+      <div class="l">sensor</div>
+    </div>
+    <div class="card"><div class="n">{{ st.mode or '—' }}</div><div class="l">mode</div></div>
+    <div class="card"><div class="n">{{ st.channel if st.channel not in (none,'') else '—' }}</div><div class="l">channel</div></div>
+    <div class="card"><div class="n">{{ st.frames_seen if st.frames_seen not in (none,'') else '—' }}</div><div class="l">frames seen</div></div>
+    <div class="card"><div class="n">{{ st.detections_total if st.detections_total not in (none,'') else '—' }}</div><div class="l">ESP detections total</div></div>
+    <div class="card"><div class="n">{{ esp.detections_count }}</div><div class="l">findings this run</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Sensor status</h2>
+    <table>
+      <tr><th>Transport</th><td class="mono">{{ st.transport or '—' }}</td>
+          <th>Source</th><td class="mono">{{ esp.source or '—' }}</td></tr>
+      <tr><th>Wi-Fi connected</th><td class="mono">{{ st.wifi_connected if st.wifi_connected not in (none,'') else '—' }}</td>
+          <th>Dropped frames</th><td class="mono">{{ st.dropped if st.dropped not in (none,'') else '—' }}</td></tr>
+      <tr><th>ESP uptime (ms, relative)</th><td class="mono">{{ st.uptime_ms if st.uptime_ms not in (none,'') else '—' }}</td>
+          <th>Heartbeats seen</th><td class="mono">{{ st.heartbeats if st.heartbeats not in (none,'') else '—' }}</td></tr>
+      <tr><th>Last run</th><td class="mono">{{ esp.finished_at or esp.started_at or '—' }}</td>
+          <th>Run</th><td class="mono"><a href="/run/{{ esp.run_id }}">{{ esp.run_id }}</a></td></tr>
+    </table>
+    {% if can_run %}
+    <form method="post" action="/run/esp_monitor" style="margin-top:12px">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="hidden" name="target" value="">
+      <button class="btn primary sm" type="submit" {{ 'disabled' if active }}>
+        {{ 'Scan in progress…' if active else 'Refresh (run esp_monitor)' }}</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>Recent detections ({{ esp.detections_count }})</h2>
+    {% if esp.busy %}
+      <div class="banner warn">ESP serial port was busy on the last run — another
+        reader may be attached. Detections below may be stale.</div>
+    {% endif %}
+    {% if esp.detections %}
+      <table>
+        <thead><tr><th>Severity</th><th>Type</th><th>Offender</th>
+                   <th>Evidence</th><th>Ingested</th></tr></thead>
+        <tbody>
+        {% for d in esp.detections %}
+          <tr>
+            <td><span class="sev" style="color:{{ sev_color.get(d.severity, '#8B98AB') }}">
+                {{ d.severity }}</span></td>
+            <td class="mono">{{ d.type }}</td>
+            <td class="mono">{{ d.target }}</td>
+            <td class="mono">{{ d.evidence }}</td>
+            <td class="mono">{{ d.timestamp }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">No attack detections in the last run — the sensor was
+        {{ 'alive and quiet' if esp.alive else 'not heard from' }}.</div>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Terminal{% endblock %}
+{% block content %}
+<h1>Terminal</h1>
+
+<div class="banner err">
+  <strong>Full shell as the <span class="mono">sentinel</span> user.</strong>
+  Anyone with a dashboard session can run arbitrary commands on this Pi here. Use
+  this only on a trusted, non-public network — never while the public tunnel is
+  up. Every session is logged.
+</div>
+
+{% if disabled %}
+  <div class="panel"><div class="empty">{{ disabled_reason }}</div></div>
+{% else %}
+  <link rel="stylesheet" href="/static/vendor/xterm.css">
+  <div class="panel" style="padding:10px">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+      <span id="tstatus" class="pill" style="background:#24324A;color:#8B98AB">connecting…</span>
+      <button id="treconnect" class="btn sm" type="button" style="display:none">Reconnect</button>
+      <span class="muted" style="font-size:12px">bash · {{ user }}</span>
+    </div>
+    <div id="term" style="height:70vh;background:#000;border-radius:8px;overflow:hidden"></div>
+  </div>
+
+  <script src="/static/vendor/xterm.js"></script>
+  <script src="/static/vendor/xterm-addon-fit.js"></script>
+  <script>
+  (function () {
+    var statusEl = document.getElementById('tstatus');
+    var reconnectEl = document.getElementById('treconnect');
+    function setStatus(text, color) {
+      statusEl.textContent = text;
+      statusEl.style.color = color || '#8B98AB';
+    }
+    var term = new Terminal({
+      cursorBlink: true, fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+      fontSize: 13,
+      theme: { background: '#000000', foreground: '#EAF0F8', cursor: '#2DD4BF' }
+    });
+    var fit = new FitAddon.FitAddon();
+    term.loadAddon(fit);
+    term.open(document.getElementById('term'));
+    try { fit.fit(); } catch (e) {}
+
+    var ws = null;
+    function sendResize() {
+      if (ws && ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      }
+    }
+    function connect() {
+      reconnectEl.style.display = 'none';
+      setStatus('connecting…', '#8B98AB');
+      var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(proto + '://' + location.host + '/ws/terminal');
+      ws.onopen = function () { setStatus('connected', '#2DD4BF'); sendResize(); term.focus(); };
+      ws.onmessage = function (ev) { term.write(ev.data); };
+      ws.onclose = function () {
+        setStatus('disconnected', '#E5484D');
+        reconnectEl.style.display = 'inline-block';
+      };
+      ws.onerror = function () { setStatus('error', '#E5484D'); };
+    }
+    term.onData(function (data) {
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'input', data: data }));
+    });
+    window.addEventListener('resize', function () { try { fit.fit(); } catch (e) {} sendResize(); });
+    reconnectEl.addEventListener('click', connect);
+    connect();
+  })();
+  </script>
+{% endif %}
+{% endblock %}
