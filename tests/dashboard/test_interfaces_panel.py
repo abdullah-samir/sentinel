@@ -312,3 +312,95 @@ def test_settings_default_wifi_iface_persists(tmp_path):
 
     with pytest.raises(ValueError):
         settings_mod.update(cfg, dc, {"wifi_iface": "bad name!!"})
+
+
+# --- Part B COMMIT 2: smart target selection ------------------------------
+def test_scan_page_shows_discovery_panel(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    login(c)
+    body = c.get("/scan?workflow=wifi_scan").text
+    assert "Smart target selection" in body
+    assert "Scan for Wi-Fi targets" in body
+    assert "nmap" in body.lower()
+
+
+def test_discover_wifi_route_passes_duration(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    from dashboard import discovery as disc
+    seen = {}
+
+    def fake(cfg, reg, seconds):
+        seen["seconds"] = seconds
+        return {"ok": True, "iface": "wlan1", "seconds": seconds, "error": "",
+                "targets": [{"kind": "ap", "value": "AA:BB", "display": "Net · AA:BB"}]}
+
+    monkeypatch.setattr(disc, "discover_wifi", fake)
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    r = c.post("/discover/wifi", data={"csrf": csrf, "seconds": "20"})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["ok"] and j["targets"][0]["value"] == "AA:BB"
+    assert seen["seconds"] == "20"                    # per-use duration passed through
+
+
+def test_discover_wifi_readonly_blocked(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    _, _, app = make_env(tmp_path, readonly=True)
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    r = c.post("/discover/wifi", data={"csrf": csrf, "seconds": "10"})
+    assert r.status_code == 403
+
+
+def test_discover_wifi_requires_csrf(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    login_csrf(c)
+    r = c.post("/discover/wifi", data={"seconds": "10"})
+    assert r.status_code == 403
+
+
+def test_discover_nmap_route(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    from dashboard import discovery as disc
+    monkeypatch.setattr(disc, "discover_hosts",
+                        lambda subnet, seconds: {"ok": True, "subnet": subnet,
+                            "error": "",
+                            "targets": [{"kind": "host", "value": "10.0.0.5",
+                                         "display": "10.0.0.5"}]})
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    r = c.post("/discover/nmap", data={"csrf": csrf, "subnet": "10.0.0.0/24",
+               "seconds": "10"})
+    assert r.status_code == 200 and r.json()["targets"][0]["value"] == "10.0.0.5"
+
+
+def test_discover_targets_poll_on_demand_with_one_adapter(tmp_path, monkeypatch):
+    stub_host(monkeypatch)                            # single monitor adapter (wlan1)
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    login_csrf(c)
+    j = c.get("/discover/targets").json()
+    assert j["active"] is False and j["mode"] == "on_demand"
+
+
+def test_background_mode_falls_back_on_scan_page_with_one_adapter(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from dashboard import settings as settings_mod
+    stub_host(monkeypatch)
+    # only wlan1 (USB) is monitor-capable; wlan0 (built-in) is not -> ONE adapter
+    monkeypatch.setattr(interfaces_mod, "supports_monitor", lambda i: i == "wlan1")
+    cfg, _, app = make_env(tmp_path)
+    settings_mod.update(cfg, SimpleNamespace(readonly=False),
+                        {"target_discovery_mode": "background"})
+    c = TestClient(app)
+    login(c)
+    body = c.get("/scan?workflow=wifi_scan").text
+    assert "second monitor adapter" in body          # fallback note shown
+    assert "on_demand" in body                        # effective mode fell back

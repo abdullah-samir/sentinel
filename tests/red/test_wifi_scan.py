@@ -464,6 +464,21 @@ def test_wifi_scan_refuses_busy_interface(tmp_path, monkeypatch):
     assert reg.busy_reason("wlan1", "t") != ""              # other reservation kept
 
 
+def test_wifi_scan_ok_when_adapter_already_in_monitor(tmp_path, monkeypatch):
+    """After discovery leaves (or a prior run left) the adapter in monitor mode,
+    a later scan re-acquires normally: `iw set type monitor` is idempotent (rc 0)
+    so enabling monitor on an already-monitor adapter does NOT error."""
+    cap = {}
+    # every iw/ip returns rc 0 — i.e. 'set type monitor' succeeds even though the
+    # adapter is already monitor (the real-world idempotent behaviour).
+    cmds = wire(monkeypatch, iface="wlan1", airodump=_fake_airodump(SAMPLE_CSV, cap))
+    ctx = make_ctx(tmp_path, wifi_scan_seconds=2)
+    WifiScan().run(ctx)
+    assert ["iw", "dev", "wlan1", "set", "type", "monitor"] in [_core(c) for c in cmds]
+    assert not any(f.type == "module_error" for f in ctx.store.findings())  # no error
+    assert [a for a in ctx.store.assets() if a.kind == "wifi_ap"]           # scan worked
+
+
 def test_wifi_scan_releases_interface_on_error(tmp_path, monkeypatch):
     """A scan that raises mid-capture still releases its reservation."""
     from core.state import get_interface_registry

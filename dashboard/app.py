@@ -46,6 +46,7 @@ from dashboard.live import attach_log_capture, detach_log_capture, sse
 from dashboard.schedule import Scheduler
 from dashboard.state import RunState
 from dashboard import assets as assets_mod
+from dashboard import discovery as discovery_mod
 from dashboard import esp as esp_mod
 from dashboard import interfaces as interfaces_mod
 from dashboard import terminal as terminal_mod
@@ -116,6 +117,9 @@ def create_app(core_config: Optional[Config] = None,
     _freed = iface_registry.reset_dead()
     if _freed:
         log.info("released stale interface reservations from dead runs: %s", _freed)
+    # Background target monitor (mode b) — only engages with 2+ monitor adapters;
+    # dormant otherwise. Released on shutdown.
+    background_monitor = discovery_mod.BackgroundMonitor(core_config, iface_registry)
     limiter = RateLimiter()
     assets_cache: dict = {}            # signature-cached asset aggregation
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES)),
@@ -134,6 +138,7 @@ def create_app(core_config: Optional[Config] = None,
         finally:
             if sched is not None:
                 sched.stop()
+            background_monitor.stop()         # release any dedicated monitor adapter
 
     app = FastAPI(title="Sentinel Dashboard", docs_url=None, redoc_url=None,
                   openapi_url=None, lifespan=_lifespan)
@@ -141,6 +146,7 @@ def create_app(core_config: Optional[Config] = None,
     app.state.limiter = limiter
     app.state.dash_config = dash_config
     app.state.iface_registry = iface_registry
+    app.state.background_monitor = background_monitor
 
     # Offline static assets (vendored xterm.js for the terminal, etc.).
     _static = Path(__file__).parent / "static"
@@ -486,7 +492,68 @@ def create_app(core_config: Optional[Config] = None,
         return render("scan.html", request, nav_active="scan", workflows=wfs,
                       workflow=workflow, prefill=prefill, active=run_state.current(),
                       option_groups=launcher.workflow_option_groups(core_config, workflow),
-                      iface_choices=iface_choices)
+                      iface_choices=iface_choices,
+                      discovery=_discovery_view())
+
+    # --- smart target discovery ------------------------------------------
+    def _discovery_view() -> dict:
+        prefs = settings_mod.discovery_prefs(core_config)
+        eff_mode, note = discovery_mod.effective_discovery_mode(
+            prefs["mode"], core_config, iface_registry)
+        free_mon = discovery_mod.pick_free_monitor_iface(core_config, iface_registry)
+        busy_holder = ""
+        if not free_mon:
+            for c in discovery_mod.monitor_capable_ifaces(core_config, iface_registry):
+                if c["busy"]:
+                    busy_holder = c["holder"]
+                    break
+        return {"configured_mode": prefs["mode"], "mode": eff_mode, "note": note,
+                "seconds": prefs["seconds"], "wifi_available": bool(free_mon),
+                "busy_holder": busy_holder, "subnet": discovery_mod.default_subnet()}
+
+    @app.post("/discover/wifi")
+    async def discover_wifi_route(request: Request):
+        if not current_user(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if dash_config.readonly:
+            return JSONResponse({"ok": False, "error": "read-only mode"}, status_code=403)
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return JSONResponse({"ok": False, "error": "CSRF validation failed"},
+                                status_code=403)
+        seconds = form.get("seconds") or settings_mod.discovery_prefs(core_config)["seconds"]
+        result = discovery_mod.discover_wifi(core_config, iface_registry, seconds)
+        return JSONResponse(result, status_code=200 if result["ok"] else 409)
+
+    @app.post("/discover/nmap")
+    async def discover_nmap_route(request: Request):
+        if not current_user(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if dash_config.readonly:
+            return JSONResponse({"ok": False, "error": "read-only mode"}, status_code=403)
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return JSONResponse({"ok": False, "error": "CSRF validation failed"},
+                                status_code=403)
+        seconds = form.get("seconds") or settings_mod.discovery_prefs(core_config)["seconds"]
+        result = discovery_mod.discover_hosts(form.get("subnet", ""), seconds)
+        return JSONResponse(result, status_code=200 if result["ok"] else 400)
+
+    @app.get("/discover/targets")
+    def discover_targets_route(request: Request):
+        """Background-mode live target poll. In on-demand mode (or read-only, or
+        with one adapter) it engages nothing and returns an empty list + note."""
+        if not current_user(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        prefs = settings_mod.discovery_prefs(core_config)
+        eff_mode, note = discovery_mod.effective_discovery_mode(
+            prefs["mode"], core_config, iface_registry)
+        if eff_mode != "background" or dash_config.readonly:
+            return JSONResponse({"mode": eff_mode, "note": note, "active": False,
+                                 "targets": []})
+        state = background_monitor.refresh(min(prefs["seconds"], 8))
+        return JSONResponse({"mode": "background", "note": "", "active": state["active"],
+                             "iface": state.get("iface", ""), "targets": state["targets"]})
 
     # --- run management ---------------------------------------------------
     @app.post("/run/{run_id}/delete")
@@ -771,6 +838,7 @@ def create_app(core_config: Optional[Config] = None,
                                       "nmap_timeout", "wifi_iface")},
                       info={"version": _version(), "modules": modules, "runs": runs,
                             "free_gb": round(free / 1e9, 1) if free >= 0 else "?"},
+                      discovery=settings_mod.discovery_prefs(core_config),
                       msg=request.query_params.get("msg"))
 
     @app.post("/settings/password")
@@ -806,6 +874,11 @@ def create_app(core_config: Optional[Config] = None,
         # Default monitor interface ("" = auto-detect is a valid value).
         if "wifi_iface" in form:
             changes["wifi_iface"] = form["wifi_iface"]
+        # Target discovery: duration + mode toggle.
+        if form.get("discovery_seconds") not in (None, ""):
+            changes["discovery_seconds"] = form["discovery_seconds"]
+        if "target_discovery_mode" in form:
+            changes["target_discovery_mode"] = form["target_discovery_mode"]
         try:
             settings_mod.update(core_config, dash_config, changes)
         except ValueError:

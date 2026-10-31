@@ -68,6 +68,21 @@ def apply_to(config, dash_config) -> None:
             setattr(config, field, data[field])
 
 
+def discovery_prefs(config) -> Dict:
+    """Target-discovery preferences from the stored settings, with defaults:
+    {"seconds": int (1-120), "mode": "on_demand"|"background"}."""
+    data = load(config)
+    seconds = data.get("discovery_seconds", 12)
+    try:
+        seconds = max(1, min(int(seconds), 120))
+    except (TypeError, ValueError):
+        seconds = 12
+    mode = data.get("target_discovery_mode", "on_demand")
+    if mode not in ("on_demand", "background"):
+        mode = "on_demand"
+    return {"seconds": seconds, "mode": mode}
+
+
 def _as_int(value, lo: int, hi: int, label: str) -> int:
     try:
         n = int(value)
@@ -98,6 +113,14 @@ def update(config, dash_config, changes: Dict) -> Dict:
         if not _IFACE_RE.match(iface):
             raise ValueError("invalid interface name")
         data["wifi_iface"] = iface
+    if "discovery_seconds" in changes:
+        data["discovery_seconds"] = _as_int(changes["discovery_seconds"], 1, 120,
+                                            "discovery duration")
+    if "target_discovery_mode" in changes:
+        m = str(changes["target_discovery_mode"])
+        if m not in ("on_demand", "background"):
+            raise ValueError("invalid target discovery mode")
+        data["target_discovery_mode"] = m
     save(config, data)
     apply_to(config, dash_config)
     return data

@@ -46,6 +46,110 @@
   </form>
 </div>
 
+{% if not readonly and discovery is defined %}
+<div class="panel">
+  <h2>Smart target selection</h2>
+  <p class="muted" style="font-size:12px;margin-top:0">
+    Mode: <strong>{{ discovery.mode }}</strong>{% if discovery.note %} — {{ discovery.note }}{% endif %}
+    · change it in <a href="/settings">Settings</a>.
+  </p>
+
+  {% if discovery.mode == 'background' %}
+    <p class="muted" style="font-size:12px">Live targets from the dedicated monitor adapter (auto-refreshing):</p>
+    <div id="bgmon_list" class="muted">loading…</div>
+  {% else %}
+    <div style="display:flex;gap:22px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:600;font-size:13px;margin-bottom:6px">Wi-Fi targets</div>
+        <label style="font-size:13px">Duration (s)
+          <input id="disc_secs" type="number" value="{{ discovery.seconds }}" min="1" max="120" style="width:80px">
+        </label>
+        <button class="btn sm" type="button" id="disc_wifi_btn" {{ 'disabled' if not discovery.wifi_available }}>Scan for Wi-Fi targets</button>
+        {% if not discovery.wifi_available %}
+        <div class="muted" style="font-size:12px">
+          {% if discovery.busy_holder %}adapter busy — in use by {{ discovery.busy_holder }}{% else %}no free monitor adapter present{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      <div>
+        <div style="font-weight:600;font-size:13px;margin-bottom:6px">Hosts (nmap&nbsp;-sn ping sweep)</div>
+        <label style="font-size:13px">Subnet
+          <input id="disc_subnet" type="text" value="{{ discovery.subnet }}" placeholder="10.0.0.0/24" style="width:150px" maxlength="64">
+        </label>
+        <button class="btn sm" type="button" id="disc_nmap_btn">Scan for hosts</button>
+      </div>
+    </div>
+  {% endif %}
+  <div id="disc_status" class="muted" style="font-size:12px;margin-top:10px"></div>
+  <div id="disc_results" style="margin-top:6px"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var csrf = "{{ csrf_token }}";
+  var statusEl = document.getElementById("disc_status");
+  var resultsEl = document.getElementById("disc_results");
+  function target() { return document.getElementById("scan_target"); }
+  function setTarget(v) { var t = target(); if (t) { t.value = v; t.focus(); } }
+  function chip(t, into) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "btn sm"; b.style.margin = "2px";
+    b.textContent = t.display || t.value;
+    b.addEventListener("click", function () { setTarget(t.value); });
+    into.appendChild(b);
+  }
+  function render(targets) {
+    resultsEl.innerHTML = "";
+    if (!targets || !targets.length) { statusEl.textContent = "No targets found."; return; }
+    statusEl.textContent = targets.length + " found — click one to use it as the target.";
+    targets.forEach(function (t) { chip(t, resultsEl); });
+  }
+  function post(url, data, btn) {
+    if (btn) btn.disabled = true;
+    statusEl.textContent = "Scanning for targets… (this can take a few seconds)";
+    resultsEl.innerHTML = "";
+    fetch(url, { method: "POST",
+                 headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                 body: new URLSearchParams(data) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.ok) { render(j.targets); }
+        else { statusEl.textContent = "Discovery failed: " + (j.error || "unknown"); }
+      })
+      .catch(function () { statusEl.textContent = "Discovery request failed."; })
+      .finally(function () { if (btn) btn.disabled = false; });
+  }
+  var wifiBtn = document.getElementById("disc_wifi_btn");
+  if (wifiBtn) wifiBtn.addEventListener("click", function () {
+    var s = document.getElementById("disc_secs");
+    post("/discover/wifi", { csrf: csrf, seconds: s ? s.value : "" }, wifiBtn);
+  });
+  var nmapBtn = document.getElementById("disc_nmap_btn");
+  if (nmapBtn) nmapBtn.addEventListener("click", function () {
+    var s = document.getElementById("disc_secs");
+    var sub = document.getElementById("disc_subnet");
+    post("/discover/nmap",
+         { csrf: csrf, subnet: sub ? sub.value : "", seconds: s ? s.value : "" }, nmapBtn);
+  });
+  var bg = document.getElementById("bgmon_list");
+  if (bg) {
+    function poll() {
+      fetch("/discover/targets", { headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var ts = (j && j.targets) || [];
+          bg.innerHTML = "";
+          if (!ts.length) { bg.textContent = j.active ? "No targets yet…" : (j.note || "inactive"); return; }
+          ts.forEach(function (t) { chip(t, bg); });
+        }).catch(function () {});
+    }
+    poll(); setInterval(poll, 6000);
+  }
+})();
+</script>
+{% endif %}
+
 <div class="panel">
   {% if readonly %}
   <div class="banner warn">Read-only mode — launching scans is disabled.</div>
@@ -58,7 +162,7 @@
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <div style="margin-bottom:14px">
       <label style="display:block;font-weight:600;font-size:13px">Target</label>
-      <input name="target" value="{{ prefill.target }}"
+      <input id="scan_target" name="target" value="{{ prefill.target }}"
              placeholder="IP / CIDR / hostname (blank = auto-detected /24)" style="min-width:300px">
       <div class="muted" style="font-size:12px">Validated server-side. Offensive modules still require the lab-authorization gate.</div>
     </div>

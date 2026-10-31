@@ -44,6 +44,15 @@
              {{ 'disabled' if pins.wifi_iface }}>
       {% if pins.wifi_iface %}<span class="muted">(env-pinned)</span>{% endif %}
       <span class="muted" style="font-size:12px">Default adapter for Wi-Fi scans; blank auto-detects the RTL8188EUS USB adapter.</span></label>
+    <label>Target discovery duration (s)
+      <input type="number" name="discovery_seconds" value="{{ discovery.seconds }}" min="1" max="120">
+      <span class="muted" style="font-size:12px">Default length of a "scan for targets" sweep (per-use override on the Scan page).</span></label>
+    <label>Target discovery mode
+      <select name="target_discovery_mode">
+        <option value="on_demand" {{ 'selected' if discovery.mode == 'on_demand' }}>On-demand (scan when asked)</option>
+        <option value="background" {{ 'selected' if discovery.mode == 'background' }}>Background monitor (needs a 2nd monitor adapter)</option>
+      </select>
+      <span class="muted" style="font-size:12px">Background mode dedicates one monitor adapter to a live target list; with a single adapter it falls back to on-demand.</span></label>
     <button class="btn primary" type="submit" style="align-self:flex-start">Save config</button>
   </form>
 </div>
