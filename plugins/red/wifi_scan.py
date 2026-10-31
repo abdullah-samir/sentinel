@@ -36,7 +36,7 @@ from core import state as _state
 from core.module import Module, Manifest
 from core.registry import register
 from core.schema import Severity
-from core.state import get_interface_registry
+from core.state import get_interface_registry, interface_safety_check
 
 # RTL8188EUS presents under one of these driver module names (new out-of-tree
 # `rtl8188eus`, or the legacy in-kernel `r8188eu`) and these USB ids.
@@ -203,6 +203,14 @@ def _self_link_reason(iface: str) -> str:
     (patchable) detectors so there is one implementation, not two."""
     return _state.self_link_reason(iface, route_fn=_default_route_iface,
                                    ssh_fn=_ssh_iface)
+
+
+def _scan_label(ctx) -> str:
+    """Human-readable holder label for busy attribution in the UI (the workflow
+    this scan runs under), e.g. 'Wi-Fi scan / Full Audit'."""
+    wf = (getattr(ctx, "workflow", "") or "").replace("_", " ").replace("-", " ").strip()
+    wf = wf.title() if wf else ""
+    return f"Wi-Fi scan / {wf}" if wf else "Wi-Fi scan"
 
 
 # --- driver diagnostics (for `sentinel wifi-check`) ------------------------ #
@@ -476,18 +484,21 @@ class WifiScan(Module):
         if not iface:
             self._skip(ctx, "no RTL8188EUS monitor adapter detected")
             return
-        reason = _self_link_reason(iface)
-        if reason:
+        reg = get_interface_registry(cfg)
+        run_id = getattr(getattr(ctx.store, "run", None), "run_id", "") or "wifi_scan"
+        # Central safety gate for this monitor-mode operation: refuse the
+        # default-route / active-SSH interface and a busy interface (with the
+        # holder's friendly name), before we touch the adapter.
+        ok, reason = interface_safety_check(iface, run_id=run_id, reg=reg,
+                                            route_fn=_default_route_iface,
+                                            ssh_fn=_ssh_iface)
+        if not ok:
             ctx.log.warning("wifi_scan: %s", reason)
             self._skip(ctx, reason)
             return
-
-        # Reserve the monitor interface through the central registry so a
-        # concurrent run (or a CLI holding it) can't fight over the adapter.
+        # Atomically reserve it (friendly label for busy attribution in the UI).
         # The reservation is released in the finally below, on finish AND error.
-        reg = get_interface_registry(cfg)
-        run_id = getattr(getattr(ctx.store, "run", None), "run_id", "") or "wifi_scan"
-        claimed, busy = reg.claim(iface, run_id, mode="monitor")
+        claimed, busy = reg.claim(iface, run_id, mode="monitor", label=_scan_label(ctx))
         if not claimed:
             ctx.log.warning("wifi_scan: %s", busy)
             self._skip(ctx, busy)

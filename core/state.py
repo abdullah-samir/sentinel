@@ -173,8 +173,8 @@ class InterfaceRegistry:
             return ""                                   # already ours
         if not pid_alive(r.get("pid")):
             return ""                                   # dead holder -> not busy
-        return (f"{iface} is busy: reserved in {r.get('mode', '?')} mode by run "
-                f"{r.get('run_id', '?')} (pid {r.get('pid', '?')})")
+        who = r.get("label") or f"run {r.get('run_id', '?')}"
+        return f"{iface} is busy — in use by {who}"
 
     def busy_reason(self, iface: str, run_id: Optional[str] = None) -> str:
         """Non-empty "busy" reason iff `iface` is held by a *different, alive*
@@ -190,20 +190,33 @@ class InterfaceRegistry:
                     for iface, r in self._res.items()}
 
     # --- mutations --------------------------------------------------------
-    def claim(self, iface: str, run_id: str, mode: str = "monitor") -> Tuple[bool, str]:
+    def claim(self, iface: str, run_id: str, mode: str = "monitor",
+              label: str = "") -> Tuple[bool, str]:
         """Atomically reserve `iface` for `run_id`. Returns (True, "") on
         success; (False, reason) if a different, still-alive run holds it.
-        Re-claiming an interface this run already holds succeeds (idempotent)."""
+        Re-claiming an interface this run already holds succeeds (idempotent).
+
+        `label` is a human-readable name for the holder (e.g. the workflow) so
+        the UI can attribute "busy" state to a task, never a raw run_id."""
         if mode not in VALID_MODES:
             mode = "monitor"
         with self._lock:
             reason = self._busy(iface, run_id)
             if reason:
                 return (False, reason)
-            self._res[iface] = {"mode": mode, "run_id": run_id,
+            self._res[iface] = {"mode": mode, "run_id": run_id, "label": label,
                                 "pid": os.getpid(), "ts": utcnow_iso()}
             self._save()
             return (True, "")
+
+    def holder_label(self, iface: str) -> str:
+        """Friendly name of an interface's *alive* holder, or "" if free/dead.
+        Resolves the stored label, falling back to 'run <run_id>'."""
+        with self._lock:
+            r = self._res.get(iface)
+            if not r or not pid_alive(r.get("pid")):
+                return ""
+            return r.get("label") or f"run {r.get('run_id', '?')}"
 
     def release(self, iface: str, run_id: Optional[str] = None) -> bool:
         """Free `iface`. If `run_id` is given, only release when this run holds

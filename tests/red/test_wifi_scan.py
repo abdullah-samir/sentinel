@@ -440,7 +440,8 @@ def test_wifi_scan_claims_during_run_and_releases_after(tmp_path, monkeypatch):
     ctx = make_ctx(tmp_path, wifi_scan_seconds=2)
     WifiScan().run(ctx)
 
-    assert seen["busy_to_others"] != "" and "monitor" in seen["busy_to_others"]
+    # busy state is attributed to a friendly holder label, not a raw run_id
+    assert seen["busy_to_others"] != "" and "Wi-Fi scan" in seen["busy_to_others"]
     assert seen["busy_to_self"] == ""                        # owner is never "busy"
     reg = get_interface_registry(ctx.config)
     assert reg.busy_reason("wlan1", "anyone") == ""          # released after the run

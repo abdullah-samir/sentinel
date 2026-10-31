@@ -34,7 +34,7 @@ from core.context import RunContext
 from core.events import EventBus
 from core.hardware import build_hardware
 from core.schema import RunResult, make_run_id, utcnow_iso
-from core.state import get_interface_registry
+from core.state import get_interface_registry, interface_safety_check
 from core.store import Store
 from core.workflows import load_workflows
 from dashboard.auth import (
@@ -479,9 +479,14 @@ def create_app(core_config: Optional[Config] = None,
                 if lj.get("workflow") in wfs:
                     workflow = lj["workflow"]
                 prefill = {"target": lj.get("target", ""), "options": lj.get("options", {})}
+        # Interface picker choices for interface-using workflows (free vs busy,
+        # with holder names); default to the configured monitor interface.
+        iface_choices = interfaces_mod.monitor_interface_choices(
+            core_config, iface_registry, default=core_config.wifi_iface)
         return render("scan.html", request, nav_active="scan", workflows=wfs,
                       workflow=workflow, prefill=prefill, active=run_state.current(),
-                      option_groups=launcher.workflow_option_groups(core_config, workflow))
+                      option_groups=launcher.workflow_option_groups(core_config, workflow),
+                      iface_choices=iface_choices)
 
     # --- run management ---------------------------------------------------
     @app.post("/run/{run_id}/delete")
@@ -543,13 +548,59 @@ def create_app(core_config: Optional[Config] = None,
                       can_run=("esp_monitor" in wfs) and not dash_config.readonly,
                       active=run_state.current())
 
-    # --- interfaces (read-only live panel) -------------------------------
+    # --- interfaces (read-only live panel + mode-assignment control) ------
+    def _render_interfaces(request: Request, notice=None, notice_err=False):
+        return render("interfaces.html", request, nav_active="interfaces",
+                      panel=interfaces_mod.interfaces_panel(core_config, iface_registry),
+                      iface_choices=interfaces_mod.monitor_interface_choices(
+                          core_config, iface_registry),
+                      notice=notice, notice_err=notice_err)
+
     @app.get("/interfaces")
     def interfaces_page(request: Request):
         if not current_user(request):
             return login_redirect()
-        return render("interfaces.html", request, nav_active="interfaces",
-                      panel=interfaces_mod.interfaces_panel(core_config, iface_registry))
+        return _render_interfaces(request)
+
+    @app.post("/interfaces/mode")
+    async def interfaces_set_mode(request: Request):
+        """Set an interface to monitor/managed. Gated by the central safety
+        check (refuses default-route/SSH + busy) so we never touch an interface
+        that is mid-task or the Pi's own uplink."""
+        if not current_user(request):
+            return login_redirect()
+        if dash_config.readonly:
+            return HTMLResponse("Read-only mode: interface changes are disabled.",
+                                status_code=403)
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return HTMLResponse("CSRF validation failed.", status_code=403)
+        iface = (form.get("iface", "") or "").strip()
+        mode = (form.get("mode", "") or "").strip()
+        if not re.match(r"^[A-Za-z0-9._:-]{1,32}$", iface):
+            return _render_interfaces(request, notice="Invalid interface name.",
+                                      notice_err=True)
+        if mode not in ("monitor", "managed"):
+            return _render_interfaces(request, notice="Invalid mode.", notice_err=True)
+        # Central safety gate: refuse default-route/SSH and any busy interface.
+        ok, reason = interface_safety_check(iface, run_id="interfaces-mode-set",
+                                            reg=iface_registry)
+        if not ok:
+            return _render_interfaces(request, notice=f"Refused: {reason}",
+                                      notice_err=True)
+        # Briefly reserve it so a scan can't grab it mid-switch, then release.
+        claimed, busy = iface_registry.claim(iface, "interfaces-mode-set", mode,
+                                             label="Interface mode change")
+        if not claimed:
+            return _render_interfaces(request, notice=f"Refused: {busy}",
+                                      notice_err=True)
+        try:
+            done, msg = interfaces_mod.set_interface_mode(iface, mode)
+        finally:
+            iface_registry.release(iface, "interfaces-mode-set")
+        log.info("interface mode-set user=%s iface=%s mode=%s ok=%s",
+                 current_user(request), iface, mode, done)
+        return _render_interfaces(request, notice=msg, notice_err=not done)
 
     # --- web terminal (RCE; off by default, trusted networks only) --------
     def _terminal_denied_reason() -> Optional[str]:
@@ -713,9 +764,11 @@ def create_app(core_config: Optional[Config] = None,
         return render("settings.html", request, nav_active="settings",
                       cfg={"nmap_timing": core_config.nmap_timing,
                            "nmap_top_ports": core_config.nmap_top_ports,
-                           "nmap_timeout": core_config.nmap_timeout},
+                           "nmap_timeout": core_config.nmap_timeout,
+                           "wifi_iface": core_config.wifi_iface},
                       pins={f: settings_mod.env_pinned(f)
-                            for f in ("readonly", "nmap_timing", "nmap_top_ports", "nmap_timeout")},
+                            for f in ("readonly", "nmap_timing", "nmap_top_ports",
+                                      "nmap_timeout", "wifi_iface")},
                       info={"version": _version(), "modules": modules, "runs": runs,
                             "free_gb": round(free / 1e9, 1) if free >= 0 else "?"},
                       msg=request.query_params.get("msg"))
@@ -750,6 +803,9 @@ def create_app(core_config: Optional[Config] = None,
         for key in ("nmap_timing", "nmap_top_ports", "nmap_timeout"):
             if form.get(key) not in (None, ""):
                 changes[key] = form[key]
+        # Default monitor interface ("" = auto-detect is a valid value).
+        if "wifi_iface" in form:
+            changes["wifi_iface"] = form["wifi_iface"]
         try:
             settings_mod.update(core_config, dash_config, changes)
         except ValueError:

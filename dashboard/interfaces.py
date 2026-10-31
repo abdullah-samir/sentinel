@@ -110,6 +110,12 @@ def interfaces_panel(config, registry) -> dict:
         else:
             mode = "—"
 
+        # Busy attribution: a friendly holder name (the workflow), never a raw
+        # run_id. Falls back to 'run <run_id>' for a reservation with no label.
+        holder = ""
+        if busy:
+            holder = res.get("label") or ("run " + str(res.get("run_id", "")))
+
         rows.append({
             "iface": iface,
             "kind": "USB" if is_usb(iface) else "built-in",
@@ -118,6 +124,7 @@ def interfaces_panel(config, registry) -> dict:
             "driver": iface_driver(iface) or "?",
             "mode": mode,
             "busy": busy,
+            "holder": holder,
             "run_id": res.get("run_id", "") if busy else "",
             "pid": res.get("pid", "") if busy else "",
             "default_route": iface == default_if,
@@ -131,3 +138,95 @@ def interfaces_panel(config, registry) -> dict:
         "ssh_iface": ssh_if,
         "count": len(rows),
     }
+
+
+def supports_monitor(iface: str) -> bool:
+    """True if the adapter's phy advertises monitor mode (via `iw`). Only called
+    for FREE Wi-Fi interfaces — never one mid-capture. Never raises."""
+    try:
+        phy = (_sys_net() / iface / "phy80211" / "name").read_text(encoding="utf-8").strip()
+    except OSError:
+        phy = ""
+    args = ["iw", "phy", phy, "info"] if phy else ["iw", "dev", iface, "info"]
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=6, check=False)
+        return "monitor" in ((p.stdout or "") + (p.stderr or "")).lower()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def monitor_interface_choices(config, registry, default: str = "") -> List[dict]:
+    """Selectable Wi-Fi interfaces for a picker. Busy interfaces are listed but
+    non-selectable, annotated with the holder's friendly name; the default-route
+    / SSH interface is non-selectable (self-lockout). A busy monitor reservation
+    is assumed monitor-capable (never probed with iw mid-capture)."""
+    reservations = registry.reservations()
+    default_if = core_state.default_route_iface() or ""
+    ssh_if = core_state.ssh_iface()
+
+    out = []
+    for iface in present_interfaces():
+        if iface == "lo" or not is_wifi(iface):
+            continue
+        res = reservations.get(iface)
+        busy = bool(res and res.get("alive"))
+        unsafe = (iface == default_if) or (bool(ssh_if) and iface == ssh_if)
+        capable = True if busy else supports_monitor(iface)
+        holder = ""
+        if busy:
+            holder = res.get("label") or ("run " + str(res.get("run_id", "")))
+        selectable = capable and not busy and not unsafe
+        if unsafe:
+            note = "default-route / SSH — protected"
+        elif busy:
+            note = "busy — in use by " + holder
+        elif not capable:
+            note = "no monitor mode"
+        else:
+            note = ""
+        out.append({
+            "iface": iface, "busy": busy, "holder": holder, "unsafe": unsafe,
+            "capable": capable, "selectable": selectable, "note": note,
+            "is_default": iface == default,
+        })
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# privileged mode switch (same scoped-sudo iw/ip approach as red.wifi_scan)
+# --------------------------------------------------------------------------- #
+def _priv(args: List[str]) -> List[str]:
+    """Prefix `sudo -n` unless already root (the dashboard runs unprivileged;
+    the scoped sudoers rule allows exactly iw/ip/airodump-ng)."""
+    if os.geteuid() == 0:
+        return list(args)
+    return ["sudo", "-n", *args]
+
+
+def _run(args: List[str], timeout: int = 10):
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, timeout=timeout,
+                           check=False)
+        return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
+    except Exception as e:  # noqa: BLE001
+        return 127, str(e)
+
+
+def set_interface_mode(iface: str, mode: str) -> tuple:
+    """Set `iface` to 'monitor' or 'managed' via iw/ip (down → set type → up),
+    the same approach red.wifi_scan uses. Returns (ok, message). Never raises.
+
+    The CALLER must have passed the central interface_safety_check() first — this
+    performs no safety gating of its own."""
+    if mode not in ("monitor", "managed"):
+        return (False, f"invalid mode {mode!r}")
+    _run(_priv(["ip", "link", "set", iface, "down"]))
+    rc, out = _run(_priv(["iw", "dev", iface, "set", "type", mode]))
+    _run(_priv(["ip", "link", "set", iface, "up"]))
+    if rc != 0:
+        hint = ("needs root — the scoped sudoers rule for iw/ip may be missing "
+                "(see deploy/sudoers.d/sentinel-wifi)") if os.geteuid() != 0 \
+            else "iw rejected the mode change"
+        detail = f": {out}" if out else ""
+        return (False, f"could not set {iface} to {mode} mode (rc={rc}; {hint}){detail}")
+    return (True, f"{iface} set to {mode} mode")

@@ -18,6 +18,19 @@
     <div class="muted" style="font-size:12px">{{ spec.help }}</div>
   </div>
 {% endmacro %}
+{% macro iface_picker(spec) %}
+  {% set val = prefill.options.get(spec.key, spec.default) %}
+  <div style="margin-bottom:12px">
+    <label for="f_{{ spec.key }}" style="display:block;font-weight:600;font-size:13px">{{ spec.label }}</label>
+    <select id="f_{{ spec.key }}" name="{{ spec.key }}">
+      <option value="" {{ 'selected' if not val }}>Auto-detect (by chipset)</option>
+      {% for c in iface_choices %}
+        <option value="{{ c.iface }}" {{ 'disabled' if not c.selectable }} {{ 'selected' if c.iface == val and c.selectable }}>{{ c.iface }}{% if c.note %} — {{ c.note }}{% endif %}</option>
+      {% endfor %}
+    </select>
+    <div class="muted" style="font-size:12px">{{ spec.help }} Busy or protected interfaces are shown but can't be selected.</div>
+  </div>
+{% endmacro %}
 {% block content %}
 <h1>Launch a scan</h1>
 
@@ -52,7 +65,9 @@
     {% for mod, specs in option_groups %}
     <fieldset style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
       <legend class="muted" style="font-size:12px;padding:0 6px">{{ mod }}</legend>
-      {% for spec in specs %}{{ field(spec) }}{% endfor %}
+      {% for spec in specs %}
+        {% if spec.key == 'wifi_iface' and iface_choices is defined and iface_choices %}{{ iface_picker(spec) }}{% else %}{{ field(spec) }}{% endif %}
+      {% endfor %}
     </fieldset>
     {% else %}
     <p class="muted">This workflow has no tunable options.</p>

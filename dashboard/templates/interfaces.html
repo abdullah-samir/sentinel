@@ -3,13 +3,17 @@
 {% block content %}
 <h1>Network interfaces</h1>
 
+{% if notice %}
+<div class="banner {{ 'err' if notice_err else '' }}">{{ notice }}</div>
+{% endif %}
+
 <div class="banner">
-  Read-only view of network interfaces and monitor-mode reservations. This page
-  <strong>never</strong> changes an interface — it reports the registry's cached
-  reservation state plus lightweight <span class="mono">/sys/class/net</span>
-  reads. A Wi-Fi scan claims its adapter here before use and releases it on
-  finish; the default-route / SSH interface is refused for monitor-mode work
-  (self-lockout guard).
+  Live view of network interfaces and monitor-mode reservations. The table below
+  is <strong>read-only</strong> — it reports the registry's cached reservation
+  state plus lightweight <span class="mono">/sys/class/net</span> reads. A Wi-Fi
+  scan claims its adapter here before use and releases it on finish; the
+  default-route / SSH interface is refused for monitor-mode work (self-lockout
+  guard).
 </div>
 
 <div class="panel">
@@ -33,7 +37,7 @@
         <td>
           {% if i.busy %}
             <span class="pill" style="background:#1d2a1e;color:#2DD4BF">busy</span>
-            <span class="mono muted">run {{ i.run_id }} (pid {{ i.pid }})</span>
+            <span class="muted">in use by {{ i.holder }}</span>
           {% else %}
             <span class="pill" style="background:#1a2232;color:#8B98AB">free</span>
           {% endif %}
@@ -48,6 +52,42 @@
   <p class="muted" style="font-size:12px;margin:12px 0 0">
     Auto-refreshing every 5s · <span id="if-updated">live</span>
   </p>
+</div>
+
+<div class="panel">
+  <h2>Set interface mode</h2>
+  {% if readonly %}
+    <div class="banner warn">Read-only mode — interface changes are disabled.</div>
+  {% else %}
+    <p class="muted" style="font-size:12px;margin:0 0 10px">
+      Switch a Wi-Fi adapter between monitor and managed mode (scoped-sudo
+      <span class="mono">iw/ip</span>). The default-route / SSH interface and any
+      interface currently in use by a task are refused.
+    </p>
+    <form method="post" action="/interfaces/mode"
+          style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label>Interface
+        <select name="iface">
+          {% for c in iface_choices %}
+            <option value="{{ c.iface }}" {{ 'disabled' if not c.selectable }}>
+              {{ c.iface }}{% if c.note %} — {{ c.note }}{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Mode
+        <select name="mode">
+          <option value="monitor">monitor</option>
+          <option value="managed">managed</option>
+        </select>
+      </label>
+      <button class="btn primary sm" type="submit">Apply</button>
+    </form>
+    {% if not iface_choices %}
+      <div class="muted" style="font-size:12px;margin-top:8px">No Wi-Fi interfaces present.</div>
+    {% endif %}
+  {% endif %}
 </div>
 
 <script>
@@ -93,8 +133,8 @@
     if (i.busy) {
       res.appendChild(pill("busy", "#1d2a1e", "#2DD4BF"));
       var m = document.createElement("span");
-      m.className = "mono muted";
-      m.textContent = " run " + i.run_id + " (pid " + i.pid + ")";
+      m.className = "muted";
+      m.textContent = " in use by " + (i.holder || "a run");
       res.appendChild(m);
     } else {
       res.appendChild(pill("free", "#1a2232", "#8B98AB"));

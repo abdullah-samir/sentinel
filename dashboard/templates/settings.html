@@ -38,6 +38,12 @@
     <label>Default per-host timeout (s)
       <input type="number" name="nmap_timeout" value="{{ cfg.nmap_timeout }}" min="0" max="3600" {{ 'disabled' if pins.nmap_timeout }}>
       {% if pins.nmap_timeout %}<span class="muted">(env-pinned)</span>{% endif %}</label>
+    <label>Default Wi-Fi monitor interface
+      <input type="text" name="wifi_iface" value="{{ cfg.wifi_iface }}" maxlength="32"
+             pattern="[A-Za-z0-9._:-]*" placeholder="blank = auto-detect by chipset"
+             {{ 'disabled' if pins.wifi_iface }}>
+      {% if pins.wifi_iface %}<span class="muted">(env-pinned)</span>{% endif %}
+      <span class="muted" style="font-size:12px">Default adapter for Wi-Fi scans; blank auto-detects the RTL8188EUS USB adapter.</span></label>
     <button class="btn primary" type="submit" style="align-self:flex-start">Save config</button>
   </form>
 </div>

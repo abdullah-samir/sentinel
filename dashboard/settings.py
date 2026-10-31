@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Dict
 
 log = logging.getLogger("sentinel.dashboard.settings")
@@ -23,7 +24,10 @@ _ENV_PINS = {
     "nmap_timing": "SENTINEL_NMAP_TIMING",
     "nmap_top_ports": "SENTINEL_NMAP_TOP_PORTS",
     "nmap_timeout": "SENTINEL_NMAP_TIMEOUT",
+    "wifi_iface": "SENTINEL_WIFI_IFACE",
 }
+
+_IFACE_RE = re.compile(r"^[A-Za-z0-9._:-]{0,32}$")   # "" = auto-detect
 
 
 def path(config):
@@ -59,7 +63,7 @@ def apply_to(config, dash_config) -> None:
     data = load(config)
     if "readonly" in data and not env_pinned("readonly"):
         dash_config.readonly = bool(data["readonly"])
-    for field in ("nmap_timing", "nmap_top_ports", "nmap_timeout"):
+    for field in ("nmap_timing", "nmap_top_ports", "nmap_timeout", "wifi_iface"):
         if field in data and not env_pinned(field):
             setattr(config, field, data[field])
 
@@ -89,6 +93,11 @@ def update(config, dash_config, changes: Dict) -> Dict:
         data["nmap_top_ports"] = _as_int(changes["nmap_top_ports"], 0, 65535, "top-ports")
     if "nmap_timeout" in changes:
         data["nmap_timeout"] = _as_int(changes["nmap_timeout"], 0, 3600, "timeout")
+    if "wifi_iface" in changes:
+        iface = str(changes["wifi_iface"]).strip()
+        if not _IFACE_RE.match(iface):
+            raise ValueError("invalid interface name")
+        data["wifi_iface"] = iface
     save(config, data)
     apply_to(config, dash_config)
     return data

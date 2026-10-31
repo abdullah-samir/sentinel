@@ -59,8 +59,18 @@ def stub_host(monkeypatch, forbid_iw_on=None):
         return "managed"
 
     monkeypatch.setattr(interfaces_mod, "iw_mode", _iw)
+    monkeypatch.setattr(interfaces_mod, "supports_monitor", lambda i: True)
     monkeypatch.setattr(core_state, "default_route_iface", lambda: "eth0")
     monkeypatch.setattr(core_state, "ssh_iface", lambda: "")
+
+
+def login_csrf(client):
+    """Log in and return a usable CSRF token (for POST routes)."""
+    r = client.get("/login")
+    csrf = re.search(r'name="csrf" value="([0-9a-f]+)"', r.text).group(1)
+    client.post("/login", data={"username": "admin", "password": PW, "csrf": csrf},
+                follow_redirects=False)
+    return csrf
 
 
 def test_interfaces_requires_auth(tmp_path):
@@ -94,13 +104,17 @@ def test_interfaces_panel_shows_busy_reservation(tmp_path, monkeypatch):
     # reservation and must NOT probe it with iw.
     stub_host(monkeypatch, forbid_iw_on="wlan1")
     _, _, app = make_env(tmp_path)
-    app.state.iface_registry.claim("wlan1", "run-xyz-123", "monitor")
+    # busy attribution: the friendly holder label is shown, never the raw run_id
+    app.state.iface_registry.claim("wlan1", "run-xyz-123", "monitor",
+                                   label="Wi-Fi scan / Full Audit")
     c = TestClient(app)
     login(c)
     r = c.get("/interfaces")
     assert r.status_code == 200
     body = r.text
-    assert "busy" in body and "run-xyz-123" in body
+    assert "busy" in body
+    assert "Wi-Fi scan / Full Audit" in body            # friendly holder name
+    assert "run-xyz-123" not in body                    # raw run_id never surfaced
     assert "monitor" in body                            # mode from the reservation
 
 
@@ -152,3 +166,149 @@ def test_startup_reset_frees_dead_keeps_live(tmp_path):
     res = app.state.iface_registry.reservations()
     assert "wlan1" not in res                            # dead run's reservation freed
     assert "wlan2" in res                                # live run's reservation kept
+
+
+# --- Part B COMMIT 1: scan interface picker -------------------------------
+def test_scan_picker_lists_free_and_disables_busy(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    _, _, app = make_env(tmp_path)
+    # wlan1 is held by a named task -> shown but not selectable
+    app.state.iface_registry.claim("wlan1", "run-7", "monitor",
+                                   label="Wi-Fi scan / Full Audit")
+    c = TestClient(app)
+    login(c)
+    body = c.get("/scan?workflow=wifi_scan").text
+    assert 'name="wifi_iface"' in body                   # it's a <select> picker now
+    assert "Auto-detect" in body
+    # wlan0 (free, safe) is a normal selectable option
+    assert re.search(r'<option value="wlan0"(?![^>]*disabled)', body)
+    # wlan1 (busy) is disabled and attributed to the holder
+    assert re.search(r'<option value="wlan1"[^>]*disabled', body)
+    assert "Wi-Fi scan / Full Audit" in body
+    # eth0 is not Wi-Fi -> not a monitor choice at all
+    assert 'value="eth0"' not in body
+
+
+def test_scan_picker_selection_reaches_run_config(tmp_path, monkeypatch):
+    """Choosing an interface flows into the per-run config, which wifi_scan then
+    claims through the registry (claim path covered by the wifi_scan tests)."""
+    stub_host(monkeypatch)
+    from core import orchestrator as orch
+    seen = {}
+
+    def fake_run(wf, target, config=None, authorized=False, events=None, run_id=None):
+        seen["wifi_iface"] = getattr(config, "wifi_iface", None)
+
+    monkeypatch.setattr(orch, "run_workflow", fake_run)
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    r = c.post("/run/wifi_scan",
+               data={"csrf": csrf, "target": "", "wifi_iface": "wlan0",
+                     "wifi_scan_seconds": "5", "wifi_scan_channel": ""},
+               follow_redirects=False)
+    assert r.status_code == 303
+    assert seen.get("wifi_iface") == "wlan0"             # selection reached the run
+
+
+# --- Part B COMMIT 1: mode-assignment control -----------------------------
+def test_mode_set_refuses_default_route(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    called = {}
+    monkeypatch.setattr(interfaces_mod, "set_interface_mode",
+                        lambda i, m: called.setdefault("hit", (i, m)) or (True, "ok"))
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    r = c.post("/interfaces/mode", data={"csrf": csrf, "iface": "eth0",
+               "mode": "monitor"}, follow_redirects=False)
+    assert r.status_code == 200
+    assert "Refused" in r.text and "default route" in r.text
+    assert "hit" not in called                           # never operated on it
+
+
+def test_mode_set_refuses_ssh(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    monkeypatch.setattr(core_state, "ssh_iface", lambda: "wlan1")
+    called = {}
+    monkeypatch.setattr(interfaces_mod, "set_interface_mode",
+                        lambda i, m: called.setdefault("hit", True) or (True, "ok"))
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    r = c.post("/interfaces/mode", data={"csrf": csrf, "iface": "wlan1",
+               "mode": "managed"}, follow_redirects=False)
+    assert "Refused" in r.text and "SSH" in r.text
+    assert "hit" not in called
+
+
+def test_mode_set_refuses_busy(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    called = {}
+    monkeypatch.setattr(interfaces_mod, "set_interface_mode",
+                        lambda i, m: called.setdefault("hit", True) or (True, "ok"))
+    _, _, app = make_env(tmp_path)
+    app.state.iface_registry.claim("wlan1", "run-9", "monitor", label="Wi-Fi scan")
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    r = c.post("/interfaces/mode", data={"csrf": csrf, "iface": "wlan1",
+               "mode": "managed"}, follow_redirects=False)
+    assert "Refused" in r.text and "busy" in r.text and "Wi-Fi scan" in r.text
+    assert "hit" not in called
+
+
+def test_mode_set_success_claims_then_releases(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    monkeypatch.setattr(interfaces_mod, "set_interface_mode",
+                        lambda i, m: (True, f"{i} set to {m} mode"))
+    _, _, app = make_env(tmp_path)
+    reg = app.state.iface_registry
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    r = c.post("/interfaces/mode", data={"csrf": csrf, "iface": "wlan1",
+               "mode": "monitor"}, follow_redirects=False)
+    assert r.status_code == 200 and "wlan1 set to monitor mode" in r.text
+    # the brief mode-set reservation is released afterwards (no leak)
+    assert "wlan1" not in reg.reservations()
+
+
+def test_mode_set_blocked_in_readonly(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    _, _, app = make_env(tmp_path, readonly=True)
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    r = c.post("/interfaces/mode", data={"csrf": csrf, "iface": "wlan1",
+               "mode": "monitor"}, follow_redirects=False)
+    assert r.status_code == 403
+
+
+def test_mode_set_requires_csrf(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    login_csrf(c)
+    r = c.post("/interfaces/mode", data={"iface": "wlan1", "mode": "monitor"},
+               follow_redirects=False)
+    assert r.status_code == 403
+
+
+# --- Part B COMMIT 1: default monitor interface persisted via settings -----
+def test_settings_default_wifi_iface_persists(tmp_path):
+    import pytest
+    from types import SimpleNamespace
+    from dashboard import settings as settings_mod
+
+    cfg = Config(root=tmp_path)
+    dc = SimpleNamespace(readonly=False)
+    assert cfg.wifi_iface == "wlan1"                      # built-in default
+    settings_mod.update(cfg, dc, {"wifi_iface": "wlan2"})
+    assert cfg.wifi_iface == "wlan2"
+
+    # simulate a restart: a fresh config re-applies the stored default
+    cfg2 = Config(root=tmp_path)
+    assert cfg2.wifi_iface == "wlan1"                     # default before apply
+    settings_mod.apply_to(cfg2, SimpleNamespace(readonly=False))
+    assert cfg2.wifi_iface == "wlan2"                     # stored default restored
+
+    with pytest.raises(ValueError):
+        settings_mod.update(cfg, dc, {"wifi_iface": "bad name!!"})
