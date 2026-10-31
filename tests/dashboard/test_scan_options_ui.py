@@ -160,3 +160,25 @@ def test_custom_dropdown_overlays_a_real_select(tmp_path):
 def test_summary_confirm_modal_present(tmp_path):
     body = _page(tmp_path)
     assert 'id="scan-modal"' in body and "Review scan" in body and "Confirm" in body
+
+
+# --- collapsible modules + truthful completeness indicator -------------------
+def test_modules_are_collapsible_and_persisted(tmp_path):
+    body = _page(tmp_path)
+    assert 'class="mod open"' in body and 'data-mod="red.recon_nmap"' in body
+    assert "mod-body" in body
+    assert "sen.mod." in body          # open/closed persisted via localStorage
+
+
+def test_completeness_indicator_from_server_required_set(tmp_path):
+    body = _page(tmp_path)
+    # recon genuinely needs a target (server skips without it) -> required=target
+    assert 'data-required="target"' in body and "data-mod-dot" in body
+    assert "updateCompleteness" in body
+
+
+def test_module_without_required_shows_no_invented_dot(tmp_path):
+    body = _wifi_page(tmp_path)
+    # wifi_scan has no required input -> empty required set, no rendered dot (not a lie)
+    assert 'data-mod="red.wifi_scan"' in body and 'data-required=""' in body
+    assert '<span class="sdot" data-mod-dot>' not in body   # no indicator element rendered

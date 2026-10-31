@@ -271,17 +271,35 @@
              placeholder="IP / CIDR / hostname (blank = auto-detected /24)" style="min-width:300px">
       <div class="muted" style="font-size:12px">Validated server-side. Offensive modules still require the lab-authorization gate.</div>
     </div>
+    {% set mod_meta = {
+      'red.recon_nmap': ('scan', 'Recon (nmap)'),
+      'red.wifi_scan': ('wifi', 'Wi-Fi scan'),
+      'blue.capture_tshark': ('activity', 'Packet capture'),
+      'blue.esp_sensor': ('radio', 'ESP sensor')
+    } %}
     {% for mod, specs in option_groups %}
-      {% if mod == 'red.recon_nmap' %}
-        {{ recon_panel(specs) }}
-      {% else %}
-      <fieldset style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
-        <legend class="muted" style="font-size:12px;padding:0 6px">{{ mod }}</legend>
-        {% for spec in specs %}
-          {% if spec.key == 'wifi_iface' and iface_choices is defined and iface_choices %}{{ iface_picker(spec) }}{% else %}{{ field(spec) }}{% endif %}
-        {% endfor %}
-      </fieldset>
-      {% endif %}
+      {% set mm = mod_meta.get(mod, ('box', mod)) %}
+      {% set req = (module_required.get(mod) if module_required is defined else []) %}
+      <section class="mod open" data-mod="{{ mod }}" data-required="{{ req | join(',') }}">
+        <div class="mod-head" role="button" tabindex="0" aria-expanded="true" aria-controls="mb_{{ loop.index }}">
+          <span class="mod-ico">{{ icon(mm[0]) }}</span>
+          <span class="mod-name">{{ mm[1] }}</span>
+          {% if req %}<span class="mod-status"><span class="sdot" data-mod-dot></span><span class="mod-status-txt"></span></span>{% endif %}
+          <span class="grow"></span>
+          <span class="mod-caret" aria-hidden="true"></span>
+        </div>
+        <div class="mod-body" id="mb_{{ loop.index }}"><div class="mod-body-inner">
+          {% if mod == 'red.recon_nmap' %}
+            {{ recon_panel(specs) }}
+          {% else %}
+          <fieldset>
+            {% for spec in specs %}
+              {% if spec.key == 'wifi_iface' and iface_choices is defined and iface_choices %}{{ iface_picker(spec) }}{% else %}{{ field(spec) }}{% endif %}
+            {% endfor %}
+          </fieldset>
+          {% endif %}
+        </div></div>
+      </section>
     {% else %}
     <p class="muted">This workflow has no tunable options.</p>
     {% endfor %}
@@ -422,6 +440,54 @@
       function (c) { wireChips(c, "data-dur", "data-dur-for"); });
     Array.prototype.forEach.call(document.querySelectorAll(".chips[data-chan-for]"),
       function (c) { wireChips(c, "data-chan", "data-chan-for"); });
+
+    /* --- collapsible modules (persisted via localStorage; default open) --- */
+    var LS = {
+      get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
+    };
+    Array.prototype.forEach.call(document.querySelectorAll(".mod"), function (sec) {
+      var head = sec.querySelector(".mod-head");
+      var key = "sen.mod." + sec.getAttribute("data-mod");
+      var stored = LS.get(key);
+      var open = stored === null ? true : stored !== "0";   // default: expanded
+      sec.classList.toggle("open", open); head.setAttribute("aria-expanded", open ? "true" : "false");
+      function toggle() {
+        var o = sec.classList.toggle("open");
+        head.setAttribute("aria-expanded", o ? "true" : "false"); LS.set(key, o ? "1" : "0");
+      }
+      head.addEventListener("click", toggle);
+      head.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+      });
+    });
+
+    /* --- completeness indicator (truthful: server's required-field set) --- */
+    function fieldVal(form, name) {
+      if (name === "target") { var t = document.getElementById("scan_target"); return t ? t.value.trim() : ""; }
+      var el = form.elements[name];
+      if (!el) return "";
+      if (el.length !== undefined && el.type === undefined) {   // radio/checkbox group
+        for (var i = 0; i < el.length; i++) if (el[i].checked) return el[i].value;
+        return "";
+      }
+      if (el.type === "checkbox") return el.checked ? el.value : "";
+      return (el.value || "").trim();
+    }
+    function updateCompleteness() {
+      var form = document.getElementById("scan-form"); if (!form) return;
+      Array.prototype.forEach.call(document.querySelectorAll(".mod[data-required]"), function (sec) {
+        var req = (sec.getAttribute("data-required") || "").split(",").filter(Boolean);
+        var dot = sec.querySelector("[data-mod-dot]"), txt = sec.querySelector(".mod-status-txt");
+        if (!req.length || !dot) return;
+        var missing = req.some(function (n) { return fieldVal(form, n) === ""; });
+        dot.className = "sdot " + (missing ? "warnx" : "ok");
+        if (txt) txt.textContent = missing ? "needs input" : "ready";
+      });
+    }
+    var cform = document.getElementById("scan-form");
+    if (cform) { cform.addEventListener("input", updateCompleteness); cform.addEventListener("change", updateCompleteness); }
+    updateCompleteness();
 
     /* --- summary / confirm gate on launch --- */
     var scanForm = document.getElementById("scan-form");

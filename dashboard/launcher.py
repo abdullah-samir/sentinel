@@ -136,6 +136,25 @@ def _steps(config, workflow: str) -> List[str]:
     return wf.get("steps", []) if isinstance(wf, dict) else []
 
 
+# Inputs a module needs non-empty for a useful scan — the SAME definition the
+# server acts on, so the UI's completeness indicator can't lie. "target" is the
+# shared run target (not a module option): red.recon_nmap.run() skips when the
+# target is empty, so recon genuinely needs it. Modules not listed here have no
+# required input (every option has a default the server fills) -> no indicator.
+_MODULE_REQUIRED: dict = {
+    "red.recon_nmap": ["target"],
+}
+
+
+def module_required(config, workflow: str) -> dict:
+    """{module: [required input keys]} for the modules in `workflow` that have an
+    options panel. A module absent from _MODULE_REQUIRED maps to [] (nothing
+    required) so the frontend shows a truthful 'ready' / no indicator — never an
+    invented one."""
+    return {m: list(_MODULE_REQUIRED.get(m, []))
+            for m in _steps(config, workflow) if m in OPTION_GROUPS}
+
+
 # spec.key -> Config attr whose current value is the field's default (so Settings
 # changes to default scan options flow into the launcher).
 _DEFAULT_FROM_CONFIG = {

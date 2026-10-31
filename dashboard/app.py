@@ -518,6 +518,7 @@ def create_app(core_config: Optional[Config] = None,
         return render("scan.html", request, nav_active="scan", workflows=wfs,
                       workflow=workflow, prefill=prefill, active=run_state.current(),
                       option_groups=launcher.workflow_option_groups(core_config, workflow),
+                      module_required=launcher.module_required(core_config, workflow),
                       iface_choices=iface_choices, privileged=(os.geteuid() == 0),
                       scan_estimate=_recon_estimate(core_config, prefill.get("target", "")),
                       discovery=_discovery_view())
