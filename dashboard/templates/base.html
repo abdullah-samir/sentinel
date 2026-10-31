@@ -12,28 +12,29 @@
 </head>
 <body>
 <div class="app">
+{% from "_icons.html" import icon %}
 {% block nav %}
   <aside class="sidebar">
     <div class="brand">Sentinel<span class="dot">.</span></div>
     {% if user %}
-    <a class="nav {{ 'active' if nav_active == 'overview' }}" href="/">Overview</a>
-    <a class="nav {{ 'active' if nav_active == 'scan' }}" href="/scan">Scan</a>
-    <a class="nav {{ 'active' if nav_active == 'schedule' }}" href="/schedule">Schedule</a>
-    <a class="nav {{ 'active' if nav_active == 'runs' }}" href="/runs">Runs</a>
-    <a class="nav {{ 'active' if nav_active == 'assets' }}" href="/assets">Assets</a>
-    <a class="nav {{ 'active' if nav_active == 'esp' }}" href="/esp">ESP sensor</a>
-    <a class="nav {{ 'active' if nav_active == 'interfaces' }}" href="/interfaces">Interfaces</a>
+    <a class="nav {{ 'active' if nav_active == 'overview' }}" href="/">{{ icon('grid') }}<span>Overview</span></a>
+    <a class="nav {{ 'active' if nav_active == 'scan' }}" href="/scan">{{ icon('scan') }}<span>Scan</span></a>
+    <a class="nav {{ 'active' if nav_active == 'schedule' }}" href="/schedule">{{ icon('calendar') }}<span>Schedule</span></a>
+    <a class="nav {{ 'active' if nav_active == 'runs' }}" href="/runs">{{ icon('list') }}<span>Runs</span></a>
+    <a class="nav {{ 'active' if nav_active == 'assets' }}" href="/assets">{{ icon('server') }}<span>Assets</span></a>
+    <a class="nav {{ 'active' if nav_active == 'esp' }}" href="/esp">{{ icon('cpu') }}<span>ESP sensor</span></a>
+    <a class="nav {{ 'active' if nav_active == 'interfaces' }}" href="/interfaces">{{ icon('network') }}<span>Interfaces</span></a>
     {% if shell_enabled %}
-    <a class="nav {{ 'active' if nav_active == 'terminal' }}" href="/terminal">Terminal</a>
+    <a class="nav {{ 'active' if nav_active == 'terminal' }}" href="/terminal">{{ icon('terminal') }}<span>Terminal</span></a>
     {% endif %}
-    <a class="nav {{ 'active' if nav_active == 'modules' }}" href="/modules">Modules</a>
-    <a class="nav {{ 'active' if nav_active == 'settings' }}" href="/settings">Settings</a>
-    <a class="nav" href="/health" target="_blank" rel="noopener">Health &#8599;</a>
+    <a class="nav {{ 'active' if nav_active == 'modules' }}" href="/modules">{{ icon('layers') }}<span>Modules</span></a>
+    <a class="nav {{ 'active' if nav_active == 'settings' }}" href="/settings">{{ icon('sliders') }}<span>Settings</span></a>
+    <a class="nav" href="/health" target="_blank" rel="noopener">{{ icon('activity') }}<span>Health</span></a>
     <div class="grow"></div>
     <div class="who">{{ user }}</div>
     <form method="post" action="/logout" style="margin:0;padding:0 6px">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
-      <button class="btn sm" type="submit">Log out</button>
+      <button class="btn sm" type="submit">{{ icon('logout') }}<span>Log out</span></button>
     </form>
     {% endif %}
   </aside>

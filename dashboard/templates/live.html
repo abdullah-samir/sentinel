@@ -72,12 +72,12 @@
   function lineText(e){
     switch(e.event){
       case 'log': return e.message || '';
-      case 'run.start': return '▶ run started ('+(e.steps_total||'?')+' steps)';
-      case 'step.start': return '▶ '+(e.name||'step')+' started';
-      case 'step.done': return '✓ '+(e.name||'step')+' done';
-      case 'step.skip': return '• '+(e.name||'step')+' skipped'+(e.reason?(' ('+e.reason+')'):'');
-      case 'step.refuse': return '• '+(e.name||'step')+' refused';
-      case 'run.done': return '✓ run complete';
+      case 'run.start': return 'run started ('+(e.steps_total||'?')+' steps)';
+      case 'step.start': return (e.name||'step')+' started';
+      case 'step.done': return (e.name||'step')+' done';
+      case 'step.skip': return (e.name||'step')+' skipped'+(e.reason?(' ('+e.reason+')'):'');
+      case 'step.refuse': return (e.name||'step')+' refused';
+      case 'run.done': return 'run complete';
       default: return e.event || '';
     }
   }

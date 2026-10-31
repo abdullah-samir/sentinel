@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Scan{% endblock %}
 {% macro field(spec) %}
   {% set val = prefill.options.get(spec.key, spec.default) %}
@@ -72,7 +73,7 @@
     {% elif spec.kind == 'choice' %}
       <select id="f_{{ spec.key }}" name="{{ spec.key }}" {{ 'disabled' if root_locked }}{% if spec.key not in ('nmap_version_intensity','nmap_os') %} class="enh-select"{% endif %} {% if spec.requires %}data-requires="{{ spec.requires }}"{% endif %}>
         {% for cval, clabel in spec.choices %}
-          <option value="{{ cval }}" {{ 'selected' if cval|string == val|string }}>{{ clabel }}{% if cval in (spec.intrusive_choices or []) %} ⚠ intrusive{% endif %}</option>
+          <option value="{{ cval }}" {{ 'selected' if cval|string == val|string }}>{{ clabel }}{% if cval in (spec.intrusive_choices or []) %} — intrusive{% endif %}</option>
         {% endfor %}
       </select>
     {% else %}
@@ -124,11 +125,11 @@
   </fieldset>
 {% endmacro %}
 {% set wf_meta = {
-  'quick_recon': ('⚡', 'Quick recon', 'Fast host + port sweep of a target.'),
-  'full_audit': ('🛰️', 'Full Audit', 'Chained passive sweep: recon → Wi-Fi → capture → ESP.'),
-  'wifi_scan': ('📡', 'Wi-Fi scan', 'Passive 802.11 reconnaissance (airodump).'),
-  'capture_only': ('🧫', 'Packet capture', 'Passive capture + offline traffic analysis.'),
-  'esp_monitor': ('🛡️', 'ESP monitor', 'Ingest the ESP32-S3 wireless-attack detector.')
+  'quick_recon': ('zap', 'Quick recon', 'Fast host + port sweep of a target.'),
+  'full_audit': ('shield', 'Full Audit', 'Chained passive sweep across recon, Wi-Fi, capture and ESP.'),
+  'wifi_scan': ('wifi', 'Wi-Fi scan', 'Passive 802.11 reconnaissance (airodump).'),
+  'capture_only': ('activity', 'Packet capture', 'Passive capture + offline traffic analysis.'),
+  'esp_monitor': ('radio', 'ESP monitor', 'Ingest the ESP32-S3 wireless-attack detector.')
 } %}
 {% block content %}
 <h1>Launch a scan</h1>
@@ -137,10 +138,10 @@
   <h2>Workflow</h2>
   <div class="wf-grid stagger">
     {% for wf in workflows %}
-      {% set m = wf_meta.get(wf, ('🧩', wf, 'Custom workflow.')) %}
+      {% set m = wf_meta.get(wf, ('box', wf, 'Custom workflow.')) %}
       <a class="wf-card {{ 'sel' if wf == workflow }}" href="/scan?workflow={{ wf }}"
          aria-current="{{ 'true' if wf == workflow else 'false' }}">
-        <span class="wf-ico">{{ m[0] }}</span>
+        <span class="wf-ico">{{ icon(m[0], 'ic-lg') }}</span>
         <div class="wf-name">{{ m[1] }}</div>
         <div class="wf-desc">{{ m[2] }}</div>
       </a>
@@ -357,7 +358,7 @@
       var trig = document.createElement("button"); trig.type = "button"; trig.className = "enh-trigger";
       trig.setAttribute("aria-haspopup", "listbox"); trig.setAttribute("aria-expanded", "false");
       var lbl = document.createElement("span"); var car = document.createElement("span");
-      car.className = "caret"; car.textContent = "▾";
+      car.className = "caret";
       trig.appendChild(lbl); trig.appendChild(car);
       var menu = document.createElement("ul"); menu.className = "enh-menu"; menu.setAttribute("role", "listbox");
       wrap.appendChild(trig); wrap.appendChild(menu);

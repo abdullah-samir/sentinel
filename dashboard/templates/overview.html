@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}{{ 'Overview' if show_stats else 'Runs' }}{% endblock %}
 {% macro sorth(key, label) %}
   {% set nd = 'asc' if (sort == key and direction == 'desc') else 'desc' %}
   <th class="sortable"{% if sort == key %} aria-sort="{{ 'descending' if direction == 'desc' else 'ascending' }}"{% endif %}>
-    <a href="?sort={{ key }}&amp;dir={{ nd }}">{{ label }}{% if sort == key %} {{ '▼' if direction == 'desc' else '▲' }}{% endif %}</a>
+    <a href="?sort={{ key }}&amp;dir={{ nd }}">{{ label }}{% if sort == key %} {{ icon('chevron-down' if direction == 'desc' else 'chevron-up') }}{% endif %}</a>
   </th>
 {% endmacro %}
 {% block content %}
@@ -28,7 +29,7 @@
 {% if active %}
 <div class="banner warn">
   <a href="/run/{{ active.run_id }}/live" class="pill" style="background:#3a2a13;color:#F5953E">
-    <span class="pulse-dot">●</span> running — view live</a>
+    <span class="sdot warnx pulse-dot"></span> running — view live</a>
   &nbsp;<strong>{{ active.workflow }}</strong> on <span class="mono">{{ active.target or "(auto)" }}</span>
 </div>
 {% endif %}
@@ -53,7 +54,7 @@
 <div class="panel">
   <div class="toolbar">
     <h2 style="margin:0">Runs ({{ rows|length }})</h2>
-    <a class="btn primary sm" href="/scan">+ New scan</a>
+    <a class="btn primary sm" href="/scan">{{ icon('plus') }} New scan</a>
     <span class="spacer" style="margin-left:auto"></span>
     <input id="search" placeholder="filter…" oninput="filterRuns()" style="min-width:180px">
   </div>
