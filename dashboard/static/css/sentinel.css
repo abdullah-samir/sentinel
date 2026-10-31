@@ -307,3 +307,13 @@ details>summary:hover{color:var(--cyan)}
 /* reveal content when a <details> opens (interfaces / advanced / asset detail) */
 details[open]>*:not(summary){animation:detailOpen var(--dur) var(--ease-out)}
 @keyframes detailOpen{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+
+/* --------------------------------------------------------- custom scrollbars */
+*{scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--surface-4);border-radius:999px;
+  border:3px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:var(--cyan);background-clip:padding-box;
+  border:3px solid transparent;box-shadow:inset 0 0 0 1px var(--glow-soft)}
+::-webkit-scrollbar-corner{background:transparent}
