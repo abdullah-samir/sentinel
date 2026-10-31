@@ -112,6 +112,7 @@ def run_workflow(
     authorized: bool = False,
     events: Optional[EventBus] = None,
     run_id: Optional[str] = None,
+    should_stop=None,
 ) -> Store:
     """Execute `workflow` against `target` and return the saved Store.
 
@@ -124,6 +125,10 @@ def run_workflow(
     observation. Both are optional and change no control flow — when omitted the
     orchestrator behaves exactly as before. Event payloads carry live detail
     (step index/total, findings-by-severity + asset count) for a live view.
+
+    `should_stop` is an optional zero-arg predicate checked BEFORE each step; when
+    it returns True the chain stops cleanly (the current step having finished),
+    records a note, and finalizes normally. Omitted -> never stops (unchanged).
     """
     config = config or Config.from_env()
     config.ensure_dirs()
@@ -176,6 +181,18 @@ def run_workflow(
     # 6. execute each step
     reg = registry.all_modules()
     for index, name in enumerate(planned, 1):
+        # Cooperative stop: between steps, honor an operator abort. The current
+        # step (if any) has already finished; remaining steps do not run.
+        if should_stop is not None and should_stop():
+            log.warning("run %s: stop requested — skipping remaining %d step(s)",
+                        run.run_id, total - index + 1)
+            store.add_finding(
+                module="orchestrator", type="module_status", severity=Severity.INFO,
+                target=norm_target, title="Run stopped by operator",
+                detail=f"Stopped before step {name}; {total - index + 1} step(s) "
+                       "not run.", tags=["orchestrator", "stopped"])
+            store.save()
+            break
         cls = reg[name]
         try:
             module = cls()

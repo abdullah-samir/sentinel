@@ -83,7 +83,8 @@ def test_launcher_passes_options_through(tmp_path, monkeypatch):
     _, _, app = make_env(tmp_path)
     captured = {}
 
-    def fake_run(wf, target, config=None, authorized=False, events=None, run_id=None):
+    def fake_run(wf, target, config=None, authorized=False, events=None, run_id=None,
+                 should_stop=None):
         captured["config"] = config
 
     monkeypatch.setattr(orch, "run_workflow", fake_run)

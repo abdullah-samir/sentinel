@@ -87,7 +87,60 @@
     {% if not iface_choices %}
       <div class="muted" style="font-size:12px;margin-top:8px">No Wi-Fi interfaces present.</div>
     {% endif %}
+
+    {% set busy_ifaces = panel.interfaces | selectattr('busy') | list %}
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-weight:600;font-size:13px;margin-bottom:6px">Force-release a stuck reservation</div>
+      <p class="muted" style="font-size:12px;margin:0 0 8px">
+        Manually free a reservation left behind by a wedged run, without restarting
+        the dashboard. Only use this if the holder is genuinely stuck.
+      </p>
+      {% if busy_ifaces %}
+      <form method="post" action="/interfaces/release"
+            style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"
+            onsubmit="return confirm('Force-release the selected interface? Only do this if its reservation is stuck.')">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <select name="iface">
+          {% for i in busy_ifaces %}
+          <option value="{{ i.iface }}">{{ i.iface }} — in use by {{ i.holder }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn danger sm" type="submit">Force release</button>
+      </form>
+      {% else %}
+      <div class="muted" style="font-size:12px">No active reservations.</div>
+      {% endif %}
+    </div>
   {% endif %}
+</div>
+
+<div class="panel">
+  <h2>Attached hardware</h2>
+  <table>
+    <thead><tr><th>Device</th><th>Port</th><th>Status</th><th>Last seen</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>ESP32-S3 Wi-Fi detection sensor</td>
+        <td class="mono">{{ esp.source or '/dev/ttyACM0' }}</td>
+        <td>
+          {% if esp.found and esp.alive %}
+            <span class="pill" style="background:#1d2a1e;color:#2DD4BF">alive</span>
+          {% elif esp.found and esp.busy %}
+            <span class="pill" style="background:#2a1d0e;color:#F5953E">busy</span>
+          {% elif esp.found %}
+            <span class="pill" style="background:#1a2232;color:#8B98AB">silent</span>
+          {% else %}
+            <span class="pill" style="background:#1a2232;color:#8B98AB">not seen</span>
+          {% endif %}
+        </td>
+        <td class="mono muted">{{ esp.finished_at or esp.started_at or '—' }}</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">
+    Read-only — detection node status from the latest
+    <span class="mono">esp_monitor</span> run.
+  </p>
 </div>
 
 <script>

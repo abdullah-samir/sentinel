@@ -4,6 +4,7 @@ The host (sysfs / iw / lsusb / ip) is fully stubbed so these are deterministic
 and never touch a real adapter."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -196,7 +197,8 @@ def test_scan_picker_selection_reaches_run_config(tmp_path, monkeypatch):
     from core import orchestrator as orch
     seen = {}
 
-    def fake_run(wf, target, config=None, authorized=False, events=None, run_id=None):
+    def fake_run(wf, target, config=None, authorized=False, events=None, run_id=None,
+                 should_stop=None):
         seen["wifi_iface"] = getattr(config, "wifi_iface", None)
 
     monkeypatch.setattr(orch, "run_workflow", fake_run)
@@ -404,3 +406,78 @@ def test_background_mode_falls_back_on_scan_page_with_one_adapter(tmp_path, monk
     body = c.get("/scan?workflow=wifi_scan").text
     assert "second monitor adapter" in body          # fallback note shown
     assert "on_demand" in body                        # effective mode fell back
+
+
+# --- COMMIT 2: force-release a stuck reservation ---------------------------
+def test_force_release_frees_reservation(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    _, _, app = make_env(tmp_path)
+    reg = app.state.iface_registry
+    reg.claim("wlan1", "run-stuck", "monitor", label="Wi-Fi scan / Full Audit")
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    # the busy interface is offered in the force-release control
+    assert "Force-release" in c.get("/interfaces").text
+    r = c.post("/interfaces/release", data={"csrf": csrf, "iface": "wlan1"},
+               follow_redirects=False)
+    assert r.status_code == 200 and "Released wlan1" in r.text
+    assert reg.busy_reason("wlan1", "anyone") == ""        # reservation gone
+
+
+def test_force_release_blocked_in_readonly(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    _, _, app = make_env(tmp_path, readonly=True)
+    app.state.iface_registry.claim("wlan1", "run-stuck", "monitor")
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    r = c.post("/interfaces/release", data={"csrf": csrf, "iface": "wlan1"},
+               follow_redirects=False)
+    assert r.status_code == 403
+    assert app.state.iface_registry.busy_reason("wlan1", "x") != ""   # still held
+
+
+def test_force_release_requires_csrf(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    _, _, app = make_env(tmp_path)
+    app.state.iface_registry.claim("wlan1", "run-stuck", "monitor")
+    c = TestClient(app)
+    login_csrf(c)
+    r = c.post("/interfaces/release", data={"iface": "wlan1"}, follow_redirects=False)
+    assert r.status_code == 403
+
+
+# --- COMMIT 2: ESP sensor row in the hardware panel -----------------------
+def _seed_esp(cfg, alive=True, run_id="2026-01-01_00-00_esp-monitor_hw1"):
+    run = {
+        "schema_version": 1, "run_id": run_id, "workflow": "esp_monitor", "target": "",
+        "started_at": "2026-01-01T00:00:00Z", "finished_at": "2026-01-01T00:00:30Z",
+        "findings": [],
+        "assets": [{"ip": "esp:/dev/ttyACM0", "kind": "esp_sensor", "alive": alive,
+                    "hostname": "ESP32-S3 Wi-Fi detection sensor", "vendor": "Espressif",
+                    "extra": {"transport": "serial", "source": "/dev/ttyACM0",
+                              "alive": alive, "busy": False, "mode": "sniffer"}}],
+        "stats": {"hosts_up": 0, "assets_total": 1, "findings_total": 0,
+                  "findings_by_severity": {"info": 0, "low": 0, "medium": 0,
+                                           "high": 0, "critical": 0}}}
+    (cfg.results_dir / f"{run_id}.json").write_text(json.dumps(run), encoding="utf-8")
+
+
+def test_esp_row_renders_alive_from_status(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    cfg, _, app = make_env(tmp_path)
+    _seed_esp(cfg, alive=True)
+    c = TestClient(app)
+    login(c)
+    body = c.get("/interfaces").text
+    assert "Attached hardware" in body
+    assert "ESP32-S3" in body and "/dev/ttyACM0" in body
+    assert "alive" in body
+
+
+def test_esp_row_not_seen_without_data(tmp_path, monkeypatch):
+    stub_host(monkeypatch)
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    login(c)
+    body = c.get("/interfaces").text
+    assert "ESP32-S3" in body and "not seen" in body

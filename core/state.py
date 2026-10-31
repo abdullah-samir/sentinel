@@ -220,7 +220,9 @@ class InterfaceRegistry:
 
     def release(self, iface: str, run_id: Optional[str] = None) -> bool:
         """Free `iface`. If `run_id` is given, only release when this run holds
-        it (never free another run's reservation). Returns True if released."""
+        it (never free another run's reservation). With `run_id=None` it is a
+        forced release (used by the operator's "force-release" control). Returns
+        True if a reservation was removed."""
         with self._lock:
             r = self._res.get(iface)
             if not r:
@@ -230,6 +232,20 @@ class InterfaceRegistry:
             del self._res[iface]
             self._save()
             return True
+
+    def release_run(self, run_id: str) -> List[str]:
+        """Release every interface held by `run_id` (safety net on run finish /
+        stop, so a crashed or stopped run never leaves a stuck reservation).
+        Returns the freed interfaces."""
+        freed: List[str] = []
+        with self._lock:
+            for iface in list(self._res):
+                if self._res[iface].get("run_id") == run_id:
+                    del self._res[iface]
+                    freed.append(iface)
+            if freed:
+                self._save()
+        return freed
 
     def reset_dead(self, is_alive: Optional[Callable[[dict], bool]] = None) -> List[str]:
         """Startup reconciliation: release reservations whose owning run/process

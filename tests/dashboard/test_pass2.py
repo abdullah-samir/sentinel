@@ -152,7 +152,8 @@ def test_due_schedule_triggers_orchestrator_and_registers_livestate(tmp_path, mo
     release = threading.Event()
     seen = {}
 
-    def blocking_run(wf, target, config=None, authorized=False, events=None, run_id=None):
+    def blocking_run(wf, target, config=None, authorized=False, events=None, run_id=None,
+                     should_stop=None):
         seen["wf"] = wf
         seen["target"] = target
         started.set()

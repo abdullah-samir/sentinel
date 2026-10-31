@@ -20,6 +20,7 @@ class RunState:
         self._lock = lock or threading.RLock()
         self._active = False
         self._live: Optional[LiveRun] = None     # current or most-recent run
+        self._stop_requested = False             # operator asked to stop the run
 
     @property
     def lock(self):
@@ -33,6 +34,7 @@ class RunState:
             if self._active:
                 return None
             self._active = True
+            self._stop_requested = False          # fresh run clears any stale stop
             self._live = LiveRun(run_id or "pending", workflow, target)
             return self._live
 
@@ -41,12 +43,27 @@ class RunState:
         shows the completed state + report link."""
         with self._lock:
             self._active = False
+            self._stop_requested = False
+
+    def request_stop(self) -> bool:
+        """Ask the active run to stop (cooperative: the orchestrator checks this
+        between steps). Returns True if a run was active to stop."""
+        with self._lock:
+            if not self._active:
+                return False
+            self._stop_requested = True
+            return True
+
+    def stop_requested(self) -> bool:
+        with self._lock:
+            return self._stop_requested
 
     def reset_stale(self) -> None:
         """Clear a stale 'run in progress' flag at startup (no run is actually
         running in a freshly-started process)."""
         with self._lock:
             self._active = False
+            self._stop_requested = False
 
     def is_active(self) -> bool:
         with self._lock:

@@ -160,6 +160,9 @@ def create_app(core_config: Optional[Config] = None,
 
     def render(name: str, request: Request, **ctx) -> HTMLResponse:
         tok = request.cookies.get(CSRF_COOKIE) or new_csrf_token()
+        # The global live-scan indicator (in base.html) needs the active run on
+        # EVERY page; routes that already pass `active` keep their value.
+        ctx.setdefault("active", run_state.current())
         html = env.get_template(name).render(csrf_token=tok, readonly=dash_config.readonly,
                                              user=current_user(request), **ctx)
         resp = HTMLResponse(html)
@@ -407,6 +410,27 @@ def create_app(core_config: Optional[Config] = None,
                                   events, run_id)
         return RedirectResponse(f"/run/{run_id}/live", status_code=303)
 
+    @app.post("/scan/stop")
+    async def stop_run(request: Request):
+        """Abort the active run (cooperative between-steps cancel). Its interface
+        is released by the run's own finally + the _bg_run safety net."""
+        if not current_user(request):
+            return login_redirect()
+        if dash_config.readonly:
+            return HTMLResponse("Read-only mode: stopping is disabled.", status_code=403)
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return HTMLResponse("CSRF validation failed.", status_code=403)
+        current = run_state.current()
+        stopped = run_state.request_stop()
+        if stopped and current:
+            log.warning("STOP requested by user=%s for run=%s (workflow=%s)",
+                        current_user(request), current.get("run_id"), current.get("workflow"))
+        back = form.get("next") or "/"
+        if not back.startswith("/"):
+            back = "/"
+        return RedirectResponse(f"{back}?stopped={1 if stopped else 0}", status_code=303)
+
     # --- live run view + SSE stream --------------------------------------
     @app.get("/run/{run_id}/live")
     def live_view(run_id: str, request: Request):
@@ -621,6 +645,7 @@ def create_app(core_config: Optional[Config] = None,
                       panel=interfaces_mod.interfaces_panel(core_config, iface_registry),
                       iface_choices=interfaces_mod.monitor_interface_choices(
                           core_config, iface_registry),
+                      esp=esp_mod.esp_panel(core_config),
                       notice=notice, notice_err=notice_err)
 
     @app.get("/interfaces")
@@ -668,6 +693,30 @@ def create_app(core_config: Optional[Config] = None,
         log.info("interface mode-set user=%s iface=%s mode=%s ok=%s",
                  current_user(request), iface, mode, done)
         return _render_interfaces(request, notice=msg, notice_err=not done)
+
+    @app.post("/interfaces/release")
+    async def interfaces_force_release(request: Request):
+        """Force-free a stuck interface reservation without restarting the
+        dashboard (operator override). Confirmed in the UI; logged."""
+        if not current_user(request):
+            return login_redirect()
+        if dash_config.readonly:
+            return HTMLResponse("Read-only mode: interface changes are disabled.",
+                                status_code=403)
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return HTMLResponse("CSRF validation failed.", status_code=403)
+        iface = (form.get("iface", "") or "").strip()
+        if not re.match(r"^[A-Za-z0-9._:-]{1,32}$", iface):
+            return _render_interfaces(request, notice="Invalid interface name.",
+                                      notice_err=True)
+        holder = iface_registry.holder_label(iface)
+        freed = iface_registry.release(iface)            # forced (any owner)
+        log.warning("FORCE-RELEASE user=%s iface=%s holder=%r freed=%s",
+                    current_user(request), iface, holder, freed)
+        msg = (f"Released {iface}" + (f" (was held by {holder})" if holder else "")
+               if freed else f"{iface} had no active reservation")
+        return _render_interfaces(request, notice=msg, notice_err=not freed)
 
     # --- web terminal (RCE; off by default, trusted networks only) --------
     def _terminal_denied_reason() -> Optional[str]:
@@ -931,17 +980,30 @@ def _bg_run(workflow: str, target: str, run_config: Config, run_state: RunState,
             events=None, run_id=None) -> None:
     """Background scan runner. Passes the per-run config + shared EventBus +
     pre-assigned run_id to the orchestrator (authorized=False, so the offensive
-    gate is NOT bypassed) and streams its logs into the live view."""
+    gate is NOT bypassed) and streams its logs into the live view. A cooperative
+    stop predicate lets the operator abort between steps; on finish/stop/error any
+    interface the run still holds is released (no stuck reservation)."""
     live = run_state.live()
     handle = attach_log_capture(live) if live else None
     try:
         orchestrator.run_workflow(workflow, target, config=run_config,
-                                  authorized=False, events=events, run_id=run_id)
+                                  authorized=False, events=events, run_id=run_id,
+                                  should_stop=run_state.stop_requested)
     except Exception as e:  # noqa: BLE001
         log.error("dashboard-triggered run failed: %s", e)
         if live:
             live.finalize(error=str(e))
     finally:
+        # Safety net: free any interface this run still holds (a module's own
+        # finally normally does this; this guarantees no stuck reservation even
+        # on a stop/crash).
+        if run_id:
+            try:
+                freed = get_interface_registry(run_config).release_run(run_id)
+                if freed:
+                    log.info("run %s: released interface(s) on finish: %s", run_id, freed)
+            except Exception as e:  # noqa: BLE001
+                log.warning("run %s: interface release failed: %s", run_id, e)
         detach_log_capture(handle)
         if live and not live.done:
             live.finalize()
