@@ -30,6 +30,7 @@ attempt (password marked "not captured").
 from __future__ import annotations
 
 import base64
+import ipaddress
 import os
 import re
 import subprocess
@@ -126,6 +127,28 @@ def _pcap_packet_count(pcap: Path) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
+_MAX_FILTER_HOSTS = 25            # keep the derived BPF bounded + valid
+
+
+def _recon_host_filter(ctx) -> str:
+    """Build a BPF 'host A or host B …' from hosts a prior recon step published to
+    the store scratch (`recon.hosts`), so a Full-Audit capture focuses on the
+    discovered hosts without the operator retyping them. Returns "" when no recon
+    hosts were forwarded, there are too many to filter cleanly, or a value is not
+    a valid IP (never let a stray value reach the BPF)."""
+    hosts = ctx.store.get("recon.hosts") or []
+    valid = []
+    for h in hosts:
+        try:
+            ipaddress.ip_address(str(h))
+        except ValueError:
+            continue
+        valid.append(str(h))
+    if not valid or len(valid) > _MAX_FILTER_HOSTS:
+        return ""
+    return " or ".join(f"host {h}" for h in valid)
+
+
 def _decode_basic(auth: str) -> Tuple[str, str]:
     try:
         token = auth.split(None, 1)[1]
@@ -184,16 +207,24 @@ class CaptureTshark(Module):
         maxpkts = int(cfg.capture_max_packets)
         maxkb = int(cfg.capture_max_filesize_kb)
 
+        # An explicit filter wins; otherwise, in a chain, focus on the hosts a
+        # prior recon step forwarded via the store scratch (no retyping).
+        explicit = (cfg.capture_filter or "").strip()
+        bpf = explicit or _recon_host_filter(ctx)
+        filter_source = "config" if explicit else ("recon" if bpf else "")
+
         args = ["tshark", "-i", iface, "-w", str(pcap), "-q",
                 "-a", f"duration:{secs}", "-c", str(maxpkts),
                 "-a", f"filesize:{maxkb}"]
-        if cfg.capture_filter:
-            args += ["-f", cfg.capture_filter]
+        if bpf:
+            args += ["-f", bpf]
 
         ctx.store.set("capture.iface", iface)
+        if filter_source:
+            ctx.store.set("capture.filter_source", filter_source)
         ctx.log.info("capture: starting on %s (<=%ss, <=%d pkts, <=%dKB)%s",
                      iface, secs, maxpkts, maxkb,
-                     f", filter={cfg.capture_filter!r}" if cfg.capture_filter else "")
+                     f", filter={bpf!r} (from {filter_source})" if bpf else "")
 
         hard_timeout = secs + 10          # wall-clock kill so a run can never hang
         start = time.monotonic()

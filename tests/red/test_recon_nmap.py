@@ -228,6 +228,28 @@ def test_scan_emits_assets_and_findings(tmp_path, monkeypatch):
     assert stats["findings_by_severity"]["high"] == 1
 
 
+def test_recon_forwards_hosts_and_ports_to_scratch(tmp_path, monkeypatch):
+    """Discovered hosts + their open ports are published to the store scratch so a
+    later chained step (Full Audit) can consume them without retyping."""
+    tcp = {22: {"state": "open", "name": "ssh"}, 80: {"state": "open", "name": "http"},
+           443: {"state": "closed", "name": "https"}}
+    up = FakeHost(state="up", protocols={"tcp": tcp}, addresses={"ipv4": "10.0.0.8"})
+    down = FakeHost(state="down", protocols={})
+    fake = FakeScanner({"10.0.0.8": up, "10.0.0.9": down})
+    monkeypatch.setattr(nmap, "PortScanner", lambda: fake)
+    ctx = make_ctx(tmp_path, nmap_fast=True)
+    ReconNmap().run(ctx)
+    assert ctx.store.get("recon.hosts") == ["10.0.0.8"]          # only the up host
+    assert ctx.store.get("recon.open_ports") == {"10.0.0.8": [22, 80]}  # open only
+
+
+def test_recon_scratch_empty_when_no_hosts(tmp_path, monkeypatch):
+    monkeypatch.setattr(nmap, "PortScanner", lambda: FakeScanner({}))
+    ctx = make_ctx(tmp_path)
+    ReconNmap().run(ctx)
+    assert ctx.store.get("recon.hosts") is None                 # nothing forwarded
+
+
 def test_smbv1_is_high(tmp_path, monkeypatch):
     tcp = {445: {"state": "open", "name": "microsoft-ds", "product": "Samba",
                  "version": "", "extrainfo": "SMBv1"}}

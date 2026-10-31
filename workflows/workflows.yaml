@@ -21,5 +21,12 @@ wifi_scan:
 esp_monitor:
   steps: [blue.esp_sensor]
 
+# Full Audit — a chained, PASSIVE/safe sweep. Steps run in this order; results
+# feed forward via the store scratch space (recon's discovered hosts become the
+# capture's focus — no retyping). This chain is passive only: it deliberately
+# EXCLUDES every offensive module, which stays manual + lab-authorization-gated.
+# On a single monitor adapter the Wi-Fi step sequences through the interface
+# registry; a step whose hardware/interface is busy or absent is reported as
+# skipped (with a reason), never silently dropped. Adding a step is data, here.
 full_audit:
-  steps: [red.recon_nmap, blue.capture_tshark]
+  steps: [red.recon_nmap, red.wifi_scan, blue.capture_tshark, blue.esp_sensor]

@@ -195,6 +195,7 @@ class ReconNmap(Module):
         up_count = 0
         dropped = 0
         svc_count = 0
+        discovered_hosts = []
         for host in hosts:
             data = scanner[host]
             if data.state() != "up":
@@ -205,6 +206,18 @@ class ReconNmap(Module):
                 continue
             up_count += 1
             svc_count += emitted
+            discovered_hosts.append(host)
+
+        # Feed results forward to later chained steps (e.g. Full Audit): the
+        # discovered hosts + their open ports land in the store's scratch space so
+        # a following module can consume them without the operator retyping a
+        # target. Other workflows simply never read these keys.
+        if discovered_hosts:
+            open_ports = {a.ip: list(a.open_ports)
+                          for a in ctx.store.assets()
+                          if a.ip in set(discovered_hosts) and a.open_ports}
+            ctx.store.set("recon.hosts", discovered_hosts)
+            ctx.store.set("recon.open_ports", open_ports)
 
         if pn:
             ctx.log.info('recon: under -Pn, "alive" = responded with >=1 open/closed port '

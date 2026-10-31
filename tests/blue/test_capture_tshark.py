@@ -331,6 +331,68 @@ def test_capture_builds_args_and_records_stop(tmp_path, monkeypatch):
     assert ctx.store.get("capture.stop_reason")
 
 
+def _fake_run_writing(captured):
+    def fake_run(args, **kw):
+        captured["args"] = args
+        Path(args[args.index("-w") + 1]).write_bytes(b"\xd4\xc3\xb2\xa1")
+
+        class R:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        return R()
+    return fake_run
+
+
+def test_capture_focuses_on_recon_hosts_when_no_filter(tmp_path, monkeypatch):
+    """Full-Audit data-forward: recon's discovered hosts (store scratch) become
+    the capture's BPF filter when the operator set none."""
+    monkeypatch.setattr(cap, "_select_iface", lambda cfg: "eth0")
+    monkeypatch.setattr(cap, "_pcap_packet_count", lambda p: 1)
+    captured = {}
+    monkeypatch.setattr(cap.subprocess, "run", _fake_run_writing(captured))
+    ctx = make_ctx(tmp_path, capture_seconds=2)        # no explicit capture_filter
+    ctx.store.set("recon.hosts", ["10.0.0.8", "10.0.0.9"])
+    CaptureTshark().capture(ctx)
+    a = captured["args"]
+    assert a[a.index("-f") + 1] == "host 10.0.0.8 or host 10.0.0.9"
+    assert ctx.store.get("capture.filter_source") == "recon"
+
+
+def test_capture_explicit_filter_beats_recon(tmp_path, monkeypatch):
+    monkeypatch.setattr(cap, "_select_iface", lambda cfg: "eth0")
+    monkeypatch.setattr(cap, "_pcap_packet_count", lambda p: 1)
+    captured = {}
+    monkeypatch.setattr(cap.subprocess, "run", _fake_run_writing(captured))
+    ctx = make_ctx(tmp_path, capture_seconds=2, capture_filter="not port 22")
+    ctx.store.set("recon.hosts", ["10.0.0.8"])
+    CaptureTshark().capture(ctx)
+    a = captured["args"]
+    assert a[a.index("-f") + 1] == "not port 22"        # explicit wins
+    assert ctx.store.get("capture.filter_source") == "config"
+
+
+def test_capture_no_filter_without_recon(tmp_path, monkeypatch):
+    monkeypatch.setattr(cap, "_select_iface", lambda cfg: "eth0")
+    monkeypatch.setattr(cap, "_pcap_packet_count", lambda p: 1)
+    captured = {}
+    monkeypatch.setattr(cap.subprocess, "run", _fake_run_writing(captured))
+    ctx = make_ctx(tmp_path, capture_seconds=2)         # no filter, no recon scratch
+    CaptureTshark().capture(ctx)
+    assert "-f" not in captured["args"]
+
+
+def test_capture_ignores_bad_recon_values(tmp_path, monkeypatch):
+    monkeypatch.setattr(cap, "_select_iface", lambda cfg: "eth0")
+    monkeypatch.setattr(cap, "_pcap_packet_count", lambda p: 1)
+    captured = {}
+    monkeypatch.setattr(cap.subprocess, "run", _fake_run_writing(captured))
+    ctx = make_ctx(tmp_path, capture_seconds=2)
+    ctx.store.set("recon.hosts", ["not-an-ip", "10.0.0.5"])   # non-IP dropped
+    CaptureTshark().capture(ctx)
+    assert captured["args"][captured["args"].index("-f") + 1] == "host 10.0.0.5"
+
+
 def test_capture_timeout_saves_partial(tmp_path, monkeypatch):
     monkeypatch.setattr(cap, "_select_iface", lambda cfg: "eth0")
     monkeypatch.setattr(cap, "_pcap_packet_count", lambda p: 3)
