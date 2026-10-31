@@ -1,3 +1,4 @@
+// Sentinel — © 2026 Abdullah Samir. All rights reserved.
 // Sentinel ESP32-S3 Wi-Fi attack DETECTION sensor — reporting module.
 //
 // DEFENSIVE / LAB-ONLY. Output only. Serial is always available; HTTP is served

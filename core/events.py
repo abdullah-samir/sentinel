@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """A minimal synchronous event bus.
 
 The orchestrator and (later) the display/dashboard use this to react to run

@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Full scan launcher: surface EVERY existing per-run option as a form field,
 validate it, and build a per-run Config (never mutating global config/core).
 

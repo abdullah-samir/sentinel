@@ -1,3 +1,4 @@
+// Sentinel — © 2026 Abdullah Samir. All rights reserved.
 // Sentinel ESP32-S3 Wi-Fi attack DETECTION sensor — configuration template.
 //
 // DEFENSIVE / LAB-ONLY. This sensor only listens and detects. It never

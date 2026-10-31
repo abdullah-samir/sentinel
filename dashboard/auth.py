@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Authentication primitives for the dashboard — all stdlib, no new deps.
 
 * Passwords: hashed with ``hashlib.scrypt`` (a strong memory-hard KDF). The

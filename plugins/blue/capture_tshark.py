@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """blue.capture_tshark — passive packet capture + offline analysis (Phase 1).
 
 PASSIVE / read-only: this module only *listens*. tshark/dumpcap receive packets;

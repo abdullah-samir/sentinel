@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """RunContext: the single object passed to every module's is_available/run.
 
 A module reads `ctx.target`, `ctx.config`, prior results via `ctx.store`, logs

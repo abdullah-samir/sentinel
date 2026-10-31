@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Hardware abstraction.
 
 All physical hardware (ST7735 display, nRF24 radios, GPIO buttons) sits behind

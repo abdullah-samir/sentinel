@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Run history and diffing for reports.
 
 Finding identity is deliberately coarse — ``module + type + target + port`` — so

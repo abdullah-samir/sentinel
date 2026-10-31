@@ -66,6 +66,13 @@ clients — it never transmits, deauths, or injects). It needs a monitor-capable
 USB adapter: the TP-Link/Alfa **WN722N v2/v3 (Realtek RTL8188EUS)**. The driver
 is out-of-tree and installed via DKMS (so it auto-rebuilds on kernel updates).
 
+**On kernel 6.13+ (this Pi runs 6.18.50) the driver you want is the
+`aircrack-ng/rtl8188eus` _PR #275_ branch** (gglluukk, "build support for kernel
+6.7–7.x"), which the setup script fetches automatically. It builds cleanly on
+6.18 and, unlike the in-kernel `rtl8xxxu`, actually **delivers RX frames** in
+monitor mode — verified on this Pi: **30 real 802.11 frames captured with
+`tcpdump` on channel 6**. The module name it installs is `8188eu`.
+
 **One-time setup (run it yourself; needs root; NOT auto-run):**
 ```
 sudo /home/sentinel/sentinel/deploy/wifi-monitor-setup.sh
@@ -78,33 +85,40 @@ What the setup script does, in order:
    It errors out clearly if the headers tree is missing (the DKMS build fails
    without it).
 2. Clones the driver from GitHub (`aircrack-ng/rtl8188eus`) — **not** from apt —
-   and DKMS-installs it, deriving the source dir name `/usr/src/<name>-<version>`
-   from the clone's own `dkms.conf` (e.g. `realtek-rtl8188eus-5.3.9~20221105`).
-   Getting this name wrong is what caused the original
-   *"Could not find module source directory … does not exist"* failure.
+   and checks out the **PR #275 branch** (`git fetch origin pull/275/head`), which
+   is the one that builds on kernel 6.13+. It DKMS-installs it, deriving the source
+   dir name `/usr/src/<name>-<version>` from the clone's own `dkms.conf` (e.g.
+   `realtek-rtl8188eus-5.3.9~20221105`). Getting this name wrong is what caused the
+   original *"Could not find module source directory … does not exist"* failure.
 3. Blacklists `r8188eu` (always — the broken legacy driver). It blacklists
    `rtl8xxxu` **only when** an out-of-tree driver actually built, via
    `/etc/modprobe.d/sentinel-rtl8188eus-blacklist.conf`. The Pi's built-in Wi-Fi
    uses `brcmfmac` and is unaffected.
 4. Verifies the driver is registered (`dkms status`) and tells you to **reboot**.
 
-### Kernel 6.13+ (e.g. this Pi on 6.18): the out-of-tree driver does NOT build
-The classic `aircrack-ng/rtl8188eus` driver (last real update 2022) **fails to
-compile on kernel 6.13+** — kbuild changed how `$(src)` resolves and the kernel
-removed the timer APIs (`del_timer_sync`, `from_timer`) the driver uses — and
-morrownr's fork has been **removed upstream**. On these kernels the **in-kernel
-`rtl8xxxu`** driver already provides monitor mode for this chip (verify with
-`iw phy <phy> info` → `* monitor`). The setup script detects a failed build,
-**prints the compiler error**, and falls back to `rtl8xxxu` **without** blacklisting
-it (so the working driver is never disabled); no reboot is needed in that case.
+### Kernel 6.13+ (e.g. this Pi on 6.18): use the PR #275 branch
+The **default** `aircrack-ng/rtl8188eus` branch (v5.3.9, last real update 2022)
+**fails to compile on kernel 6.13+** — kbuild changed how `$(src)` resolves
+(`fatal error: drv_types.h: No such file or directory`) and the kernel removed the
+timer APIs (`del_timer_sync`, `from_timer`) the driver uses — and morrownr's fork
+has been **removed upstream**.
 
-> **App-side caveat (core, not deployment):** `red.wifi_scan` currently gates
-> availability on the adapter being bound to a driver literally named
-> `rtl8188eus`. When the working driver is the in-kernel `rtl8xxxu` (as on 6.18),
-> the module reports *unavailable* even though monitor mode works. Making it use
-> `rtl8xxxu` is a one-line change to `MONITOR_DRIVER`/the driver check in
-> `plugins/red/wifi_scan.py` — a core change, intentionally out of scope for this
-> deployment helper.
+**The fix is the `aircrack-ng/rtl8188eus` PR #275 branch** (gglluukk, commit
+`2d93b74`, "build support for kernel 6.7–7.x"). It compiles cleanly on 6.18.50 and
+installs as module **`8188eu`**. The setup script fetches it automatically
+(`git fetch origin pull/275/head`); it still prints the first compiler error and
+falls back to the in-kernel `rtl8xxxu` only if even PR #275 fails to build.
+
+Why the fallback is a last resort: the in-kernel `rtl8xxxu` *advertises* monitor
+mode and `iw set type monitor` succeeds, but for the RTL8188EU/EUS it **captures
+0 frames** (see below). PR #275's `8188eu` captures real frames. When PR #275
+installs, the script blacklists `rtl8xxxu` so `8188eu` owns the device, and a
+**reboot is required**.
+
+> **App-side note:** `red.wifi_scan` / `sentinel wifi-check` **accepts the
+> `8188eu` driver** — `wifi-check` reports it as *"monitor-capable, accepted"* and
+> `READY: yes`. (Only the in-kernel `rtl8xxxu` name was previously treated as
+> not-ready, which no longer matters now that PR #275 provides `8188eu`.)
 
 **`sentinel wifi-check`** auto-detects the adapter by **driver/chipset, not by
 interface name** (it never assumes `wlan1`), and reports: is the DKMS driver
@@ -128,15 +142,15 @@ mode 0440, by `wifi-monitor-setup.sh`). It grants `sentinel` passwordless sudo f
 `/usr/sbin/iw`, `/usr/sbin/ip`, `/usr/sbin/airodump-ng` **only** — nothing broad.
 Without it the scan fails with *"could not set wlan1 to monitor mode (rc=255)"*.
 
-### Capture limitation on kernel 6.13+ (in-kernel rtl8xxxu)
-On kernels where the out-of-tree `rtl8188eus` driver does not build, the adapter
-runs on the in-kernel `rtl8xxxu`. That driver **advertises** monitor mode and
-`iw set type monitor` succeeds, but for the RTL8188EU/EUS it **does not actually
-deliver RX frames** — a scan enters monitor cleanly yet captures 0 APs (confirmed
-with `tcpdump`: 0 packets on a channel with a strong AP). When this happens the
-module emits an INFO *"Wi-Fi scan captured no frames"* finding pointing here. To
-get real captures you need the out-of-tree `rtl8188eus` driver (a kernel old
-enough for it to build) or a different monitor-capable adapter.
+### The in-kernel rtl8xxxu captures 0 frames (why PR #275 matters)
+If the adapter falls back to the in-kernel `rtl8xxxu` (i.e. PR #275 did not get
+installed), it **advertises** monitor mode and `iw set type monitor` succeeds, but
+for the RTL8188EU/EUS it **does not actually deliver RX frames** — a scan enters
+monitor cleanly yet captures 0 APs (confirmed with `tcpdump`: 0 packets on channels
+1/6/11 with a strong AP beaconing on ch 6). When this happens the module emits an
+INFO *"Wi-Fi scan captured no frames"* finding. The fix is to install the PR #275
+`8188eu` driver (above), which captured **30 real frames** on the same channel.
+Re-run `sudo deploy/wifi-monitor-setup.sh` (it now fetches PR #275) and reboot.
 
 ## Web terminal (full shell) — OFF by default
 

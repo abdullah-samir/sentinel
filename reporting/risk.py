@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Risk scoring and letter grading for Sentinel reports.
 
 Generic over the run schema: it works from finding severities alone, so it

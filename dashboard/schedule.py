@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Recurring scan scheduler for the dashboard.
 
 A single background timer-loop thread (wakes ~every 30s) fires due schedules.

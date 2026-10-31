@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Logging setup for Sentinel.
 
 One `rich`-colored console handler plus an optional rotating file handler under

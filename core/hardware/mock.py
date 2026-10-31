@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Null hardware backends.
 
 Each logs what a real device would do and reports `available() -> False`, so any

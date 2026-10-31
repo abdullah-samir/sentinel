@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Dashboard auth configuration.
 
 A small JSON file (``data/dashboard.json``, gitignored) holds the admin

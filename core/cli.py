@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """The `sentinel` command-line entry point.
 
 Subcommands:

@@ -1,3 +1,4 @@
+// Sentinel — © 2026 Abdullah Samir. All rights reserved.
 // Sentinel ESP32-S3 Wi-Fi attack DETECTION sensor — shared types & helpers.
 //
 // DEFENSIVE / LAB-ONLY. Detection only: this firmware never transmits, deauths,

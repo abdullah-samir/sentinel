@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Read-only view-model for the live network-interfaces panel.
 
 **Strictly read-only.** This never claims, releases, or reconfigures an

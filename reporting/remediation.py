@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Static, offline remediation guidance.
 
 Maps a finding's service/type (via its tags, title words, and severity) to a

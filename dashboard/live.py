@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Live-run state for the dashboard's streaming view.
 
 A LiveRun accumulates progress for the single active scan from the orchestrator's

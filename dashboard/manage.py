@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Run management for the dashboard: strict run-id validation, path-safe file
 resolution, delete/bulk-delete, and per-run name/tag sidecars.
 

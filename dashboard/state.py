@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Single-active-run guard + live-run state for dashboard-triggered scans.
 
 Only one scan may run at a time (capture/recon contend for interfaces/sockets).

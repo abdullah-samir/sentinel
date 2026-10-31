@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """The Store: the single surface modules use to emit results.
 
 A Store wraps one `RunResult` and owns its JSON file. Modules call

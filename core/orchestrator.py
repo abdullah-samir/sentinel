@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """The orchestrator: turn a workflow name + target into a saved RunResult.
 
 Sequence (see CLAUDE.md "Orchestrator"):

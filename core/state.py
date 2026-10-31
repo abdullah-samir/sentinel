@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Interface reservation registry + the central interface-safety check.
 
 This lives in **core** on purpose: both a plugin (``red.wifi_scan``) and the

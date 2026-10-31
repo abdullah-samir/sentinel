@@ -96,7 +96,10 @@
 {% endblock %}
   <main class="main">
     {% block content %}{% endblock %}
-    <footer>Sentinel v{{ version }} · local dashboard</footer>
+    <footer>
+      Sentinel v{{ version }} · local dashboard<br>
+      &copy; 2026 Abdullah Samir &mdash; Sentinel. All rights reserved.
+    </footer>
   </main>
 </div>
 {% if user and active %}

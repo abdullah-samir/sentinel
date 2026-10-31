@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """CLI entry points for the dashboard: `sentinel dashboard` and
 `sentinel dashboard-setpass`. All logic lives here; core.cli only dispatches."""
 from __future__ import annotations

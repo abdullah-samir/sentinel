@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Runtime configuration for a Sentinel run.
 
 A single dataclass carries every knob the core and plugins read. Defaults are

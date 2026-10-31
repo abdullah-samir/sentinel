@@ -593,3 +593,183 @@
 2026-10-30 15:41:33,735 INFO    sentinel.run: esp_sensor: reading /dev/ttyACM0 @ 115200 for 30s (serial)
 2026-10-30 15:42:03,893 INFO    sentinel.run: esp_sensor: serial — 0 detection(s) -> 0 finding(s), 6 heartbeat(s), 0 malformed
 2026-10-30 15:42:03,919 INFO    sentinel.orchestrator: run 2026-10-30_13-41_esp-monitor_10.10.1.0-24_dfa9d0 complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-30 16:09:11,941 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=154.180.210.95 (full shell granted)
+2026-10-30 16:10:01,996 INFO    sentinel.orchestrator: run 2026-10-30_14-10_esp-monitor_10.10.1.1-32_0ed8db: workflow=esp_monitor target='10.10.1.1/32' steps=['blue.esp_sensor']
+2026-10-30 16:10:02,030 INFO    sentinel.orchestrator: step blue.esp_sensor: running
+2026-10-30 16:10:02,035 INFO    sentinel.run: esp_sensor: reading /dev/ttyACM0 @ 115200 for 30s (serial)
+2026-10-30 16:10:31,362 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=154.180.202.75 (full shell granted)
+2026-10-30 16:10:32,086 INFO    sentinel.run: esp_sensor: serial — 0 detection(s) -> 0 finding(s), 6 heartbeat(s), 0 malformed
+2026-10-30 16:10:32,106 INFO    sentinel.orchestrator: run 2026-10-30_14-10_esp-monitor_10.10.1.1-32_0ed8db complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 0, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-30 16:10:37,477 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=154.180.210.95
+2026-10-30 16:10:49,964 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=154.180.210.95 (full shell granted)
+2026-10-30 16:10:59,104 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=154.180.202.75
+2026-10-30 16:11:20,285 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=154.180.210.95
+2026-10-30 16:12:13,733 INFO    sentinel.orchestrator: run 2026-10-30_14-12_full-audit_10.10.1.0-24_95b298: workflow=full_audit target='10.10.1.0/24' steps=['red.recon_nmap', 'blue.capture_tshark', 'ml.detector_template']
+2026-10-30 16:12:13,754 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-30 16:12:13,760 WARNING sentinel.run: nmap_privileged set but not running as root; using unprivileged -sT (SYN/OS scans need raw sockets)
+2026-10-30 16:12:13,768 INFO    sentinel.run: recon: scanning 10.10.1.0/24 (full mode) — nmap -sT -sV -T4 --top-ports 1000 --host-timeout 100s
+2026-10-30 16:13:47,057 INFO    sentinel.run: recon: unprivileged scan — MAC/vendor unavailable (ARP/OS detection need root)
+2026-10-30 16:13:47,062 INFO    sentinel.run: recon: 10.10.1.1 up, 4 port(s)
+2026-10-30 16:13:47,065 INFO    sentinel.run: recon: 10.10.1.103 up, 0 port(s)
+2026-10-30 16:13:47,069 INFO    sentinel.run: recon: 10.10.1.105 up, 0 port(s)
+2026-10-30 16:13:47,072 INFO    sentinel.run: recon: 10.10.1.2 up, 3 port(s)
+2026-10-30 16:13:47,075 INFO    sentinel.run: recon: 10.10.1.50 up, 0 port(s)
+2026-10-30 16:13:47,078 INFO    sentinel.run: recon: 10.10.1.51 up, 0 port(s)
+2026-10-30 16:13:47,082 INFO    sentinel.run: recon: 10.10.1.52 up, 0 port(s)
+2026-10-30 16:13:47,085 INFO    sentinel.run: recon: 10.10.1.53 up, 0 port(s)
+2026-10-30 16:13:47,088 INFO    sentinel.run: recon: 10.10.1.54 up, 0 port(s)
+2026-10-30 16:13:47,091 INFO    sentinel.run: recon: 10.10.1.55 up, 0 port(s)
+2026-10-30 16:13:47,094 INFO    sentinel.run: recon: 10.10.1.56 up, 0 port(s)
+2026-10-30 16:13:47,097 INFO    sentinel.run: recon: 10.10.1.57 up, 0 port(s)
+2026-10-30 16:13:47,101 INFO    sentinel.run: recon: 10.10.1.58 up, 0 port(s)
+2026-10-30 16:13:47,104 INFO    sentinel.run: recon: 10.10.1.59 up, 0 port(s)
+2026-10-30 16:13:47,107 INFO    sentinel.run: recon: 10.10.1.60 up, 0 port(s)
+2026-10-30 16:13:47,110 INFO    sentinel.run: recon: 10.10.1.61 up, 0 port(s)
+2026-10-30 16:13:47,113 INFO    sentinel.run: recon: 10.10.1.70 up, 0 port(s)
+2026-10-30 16:13:47,117 INFO    sentinel.run: recon: 10.10.1.99 up, 1 port(s)
+2026-10-30 16:13:47,120 INFO    sentinel.run: recon: complete — 18 host(s) up (of 18 scanned), 8 open service(s)
+2026-10-30 16:13:47,138 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-30 16:13:47,145 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
+2026-10-30 16:14:21,591 INFO    sentinel.run: capture: done — iface=wlan0 packets=409 bytes=93240 duration=34.4s stop=duration
+2026-10-30 16:14:25,770 INFO    sentinel.orchestrator: step ml.detector_template skipped: no model at /home/sentinel/sentinel/data/models/detector_template.pkl
+2026-10-30 16:14:25,792 INFO    sentinel.orchestrator: run 2026-10-30_14-12_full-audit_10.10.1.0-24_95b298 complete: {'hosts_up': 18, 'assets_total': 18, 'findings_total': 10, 'findings_by_severity': {'info': 9, 'low': 1, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-30 16:18:17,830 INFO    sentinel.orchestrator: run 2026-10-30_14-18_full-audit_10.10.1.0-32_2e3baf: workflow=full_audit target='10.10.1.0/32' steps=['red.recon_nmap', 'blue.capture_tshark', 'ml.detector_template']
+2026-10-30 16:18:17,850 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-30 16:18:17,855 WARNING sentinel.run: nmap_privileged set but not running as root; using unprivileged -sT (SYN/OS scans need raw sockets)
+2026-10-30 16:18:17,863 INFO    sentinel.run: recon: scanning 10.10.1.0/32 (full mode) — nmap -sT -Pn -sV -T5 --top-ports 1000 --host-timeout 300s
+2026-10-30 16:18:17,871 INFO    sentinel.run: recon: -Pn active — host discovery skipped; every address is treated as up (slower on large CIDRs)
+2026-10-30 16:19:09,777 INFO    sentinel.run: recon: unprivileged scan — MAC/vendor unavailable (ARP/OS detection need root)
+2026-10-30 16:19:09,781 INFO    sentinel.run: recon: under -Pn, "alive" = responded with >=1 open/closed port or a MAC (not merely pinged); 0 alive, 1 no-response address(es) dropped
+2026-10-30 16:19:09,785 INFO    sentinel.run: recon: complete — 0 host(s) up (of 1 scanned), 0 open service(s)
+2026-10-30 16:19:09,799 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-30 16:19:09,806 INFO    sentinel.run: capture: starting on wlan0 (<=180s, <=20000 pkts, <=51200KB)
+2026-10-30 16:20:32,078 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=154.180.210.95 (full shell granted)
+2026-10-30 16:20:59,891 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=156.192.184.232 (full shell granted)
+2026-10-30 16:21:22,150 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=154.180.210.95
+2026-10-30 16:22:10,819 INFO    sentinel.run: capture: done — iface=wlan0 packets=7910 bytes=4179028 duration=181.0s stop=duration
+2026-10-30 16:22:20,718 INFO    sentinel.orchestrator: step ml.detector_template skipped: no model at /home/sentinel/sentinel/data/models/detector_template.pkl
+2026-10-30 16:22:20,736 INFO    sentinel.orchestrator: run 2026-10-30_14-18_full-audit_10.10.1.0-32_2e3baf complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 3, 'findings_by_severity': {'info': 2, 'low': 0, 'medium': 1, 'high': 0, 'critical': 0}}
+2026-10-30 16:28:22,147 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=156.192.184.232
+2026-10-30 16:33:33,231 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=154.180.202.75 (full shell granted)
+2026-10-30 16:41:53,235 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=154.180.202.75
+2026-10-30 16:44:32,999 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=156.192.184.232 (full shell granted)
+2026-10-30 17:18:14,946 INFO    sentinel.orchestrator: run 2026-10-30_15-18_full-audit_10.10.1.100-32_a6fb62: workflow=full_audit target='10.10.1.100/32' steps=['red.recon_nmap', 'blue.capture_tshark', 'ml.detector_template']
+2026-10-30 17:18:14,984 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-30 17:18:14,988 WARNING sentinel.run: nmap_privileged set but not running as root; using unprivileged -sT (SYN/OS scans need raw sockets)
+2026-10-30 17:18:14,992 INFO    sentinel.run: recon: scanning 10.10.1.100/32 (full mode) — nmap -sT -Pn -sV -T4 --top-ports 1000 --host-timeout 300s
+2026-10-30 17:18:15,001 INFO    sentinel.run: recon: -Pn active — host discovery skipped; every address is treated as up (slower on large CIDRs)
+2026-10-30 17:18:43,778 INFO    sentinel.run: recon: unprivileged scan — MAC/vendor unavailable (ARP/OS detection need root)
+2026-10-30 17:18:43,785 INFO    sentinel.run: recon: 10.10.1.100 up, 2 port(s)
+2026-10-30 17:18:43,788 INFO    sentinel.run: recon: under -Pn, "alive" = responded with >=1 open/closed port or a MAC (not merely pinged); 1 alive, 0 no-response address(es) dropped
+2026-10-30 17:18:43,792 INFO    sentinel.run: recon: complete — 1 host(s) up (of 1 scanned), 2 open service(s)
+2026-10-30 17:18:43,806 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-30 17:18:43,813 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
+2026-10-30 17:19:18,295 INFO    sentinel.run: capture: done — iface=wlan0 packets=693 bytes=195964 duration=34.5s stop=duration
+2026-10-30 17:19:22,672 INFO    sentinel.orchestrator: step ml.detector_template skipped: no model at /home/sentinel/sentinel/data/models/detector_template.pkl
+2026-10-30 17:19:22,691 INFO    sentinel.orchestrator: run 2026-10-30_15-18_full-audit_10.10.1.100-32_a6fb62 complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 4, 'findings_by_severity': {'info': 4, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-30 17:20:53,654 INFO    sentinel.orchestrator: run 2026-10-30_15-20_full-audit_10.10.1.20-32_8dcbe5: workflow=full_audit target='10.10.1.20/32' steps=['red.recon_nmap', 'blue.capture_tshark', 'ml.detector_template']
+2026-10-30 17:20:53,668 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-30 17:20:53,672 WARNING sentinel.run: nmap_privileged set but not running as root; using unprivileged -sT (SYN/OS scans need raw sockets)
+2026-10-30 17:20:53,678 INFO    sentinel.run: recon: scanning 10.10.1.20/32 (full mode) — nmap -sT -Pn -sV -T4 --top-ports 1000 --host-timeout 300s
+2026-10-30 17:20:53,686 INFO    sentinel.run: recon: -Pn active — host discovery skipped; every address is treated as up (slower on large CIDRs)
+2026-10-30 17:20:55,797 INFO    sentinel.run: recon: unprivileged scan — MAC/vendor unavailable (ARP/OS detection need root)
+2026-10-30 17:20:55,801 INFO    sentinel.run: recon: 10.10.1.20 up, 1 port(s)
+2026-10-30 17:20:55,804 INFO    sentinel.run: recon: under -Pn, "alive" = responded with >=1 open/closed port or a MAC (not merely pinged); 1 alive, 0 no-response address(es) dropped
+2026-10-30 17:20:55,808 INFO    sentinel.run: recon: complete — 1 host(s) up (of 1 scanned), 1 open service(s)
+2026-10-30 17:20:55,822 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-30 17:20:55,829 INFO    sentinel.run: capture: starting on wlan0 (<=30s, <=20000 pkts, <=51200KB)
+2026-10-30 17:21:26,810 INFO    sentinel.run: capture: done — iface=wlan0 packets=652 bytes=191080 duration=31.0s stop=duration
+2026-10-30 17:21:31,182 INFO    sentinel.orchestrator: step ml.detector_template skipped: no model at /home/sentinel/sentinel/data/models/detector_template.pkl
+2026-10-30 17:21:31,202 INFO    sentinel.orchestrator: run 2026-10-30_15-20_full-audit_10.10.1.20-32_8dcbe5 complete: {'hosts_up': 1, 'assets_total': 1, 'findings_total': 3, 'findings_by_severity': {'info': 3, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-30 19:56:36,812 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=156.192.184.232
+2026-10-30 23:04:57,839 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=154.180.202.75 (full shell granted)
+2026-10-30 23:21:20,892 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=154.180.202.75
+2026-10-30 23:21:41,176 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=156.192.184.232 (full shell granted)
+2026-10-30 23:35:00,387 INFO    sentinel.orchestrator: run 2026-10-30_21-35_wifi-scan_de4fca: workflow=wifi_scan target='(none)' steps=['red.wifi_scan']
+2026-10-30 23:35:00,425 INFO    sentinel.orchestrator: step red.wifi_scan: running
+2026-10-30 23:35:00,442 INFO    sentinel.run: wifi_scan: enabling monitor mode on wlan1 via iw/ip (NOT airmon-ng; the Pi's networking is untouched)
+2026-10-30 23:35:00,552 INFO    sentinel.run: wifi_scan: capturing on wlan1 for 30s (channel-hopping)
+2026-10-30 23:35:30,573 INFO    sentinel.run: wifi_scan: complete — 1 AP(s), 2 client(s)
+2026-10-30 23:35:30,660 INFO    sentinel.run: wifi_scan: restored wlan1 to managed mode
+2026-10-30 23:35:30,677 INFO    sentinel.orchestrator: run 2026-10-30_21-35_wifi-scan_de4fca complete: {'hosts_up': 3, 'assets_total': 3, 'findings_total': 1, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 1, 'high': 0, 'critical': 0}}
+2026-10-30 23:35:36,428 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=156.192.184.232
+2026-10-30 23:37:23,124 INFO    sentinel.orchestrator: run 2026-10-30_21-37_wifi-scan_96becb: workflow=wifi_scan target='(none)' steps=['red.wifi_scan']
+2026-10-30 23:37:23,161 INFO    sentinel.orchestrator: step red.wifi_scan: running
+2026-10-30 23:37:23,180 INFO    sentinel.run: wifi_scan: enabling monitor mode on wlan1 via iw/ip (NOT airmon-ng; the Pi's networking is untouched)
+2026-10-30 23:37:23,289 INFO    sentinel.run: wifi_scan: capturing on wlan1 for 900s (channel-hopping)
+2026-10-30 23:52:23,358 INFO    sentinel.run: wifi_scan: complete — 8 AP(s), 28 client(s)
+2026-10-30 23:52:23,448 INFO    sentinel.run: wifi_scan: restored wlan1 to managed mode
+2026-10-30 23:52:23,469 INFO    sentinel.orchestrator: run 2026-10-30_21-37_wifi-scan_96becb complete: {'hosts_up': 36, 'assets_total': 36, 'findings_total': 6, 'findings_by_severity': {'info': 0, 'low': 0, 'medium': 6, 'high': 0, 'critical': 0}}
+2026-10-30 23:56:14,619 INFO    sentinel.orchestrator: run 2026-10-30_21-56_full-audit_1126ca: workflow=full_audit target='(none)' steps=['red.recon_nmap', 'blue.capture_tshark', 'ml.detector_template']
+2026-10-30 23:56:14,637 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-30 23:56:14,653 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-30 23:56:14,663 INFO    sentinel.run: capture: starting on wlan0 (<=300s, <=20000 pkts, <=51200KB)
+2026-10-31 00:01:15,724 INFO    sentinel.run: capture: done — iface=wlan0 packets=7797 bytes=2034196 duration=301.0s stop=duration
+2026-10-31 00:01:24,934 INFO    sentinel.orchestrator: step ml.detector_template skipped: no model at /home/sentinel/sentinel/data/models/detector_template.pkl
+2026-10-31 00:01:24,951 INFO    sentinel.orchestrator: run 2026-10-30_21-56_full-audit_1126ca complete: {'hosts_up': 0, 'assets_total': 0, 'findings_total': 3, 'findings_by_severity': {'info': 3, 'low': 0, 'medium': 0, 'high': 0, 'critical': 0}}
+2026-10-31 09:47:50,421 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=154.180.231.36 (full shell granted)
+2026-10-31 10:39:51,585 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=154.180.231.36
+2026-10-31 11:27:55,097 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=154.180.231.36 (full shell granted)
+2026-10-31 11:27:57,673 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=154.180.231.36
+2026-10-31 12:18:57,298 INFO    sentinel.orchestrator: run 2026-10-31_10-18_full-audit_10.10.1.0-24_1405c9: workflow=full_audit target='10.10.1.0/24' steps=['red.recon_nmap', 'red.wifi_scan', 'blue.capture_tshark', 'blue.esp_sensor']
+2026-10-31 12:18:57,372 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-31 12:18:57,376 WARNING sentinel.run: nmap_privileged set but not running as root; using unprivileged -sT (SYN/OS scans need raw sockets)
+2026-10-31 12:18:57,380 INFO    sentinel.run: recon: scanning 10.10.1.0/24 (full mode) — nmap -sT -Pn -sV -T4 --top-ports 1000 --host-timeout 300s
+2026-10-31 12:18:57,387 INFO    sentinel.run: recon: -Pn active — host discovery skipped; every address is treated as up (slower on large CIDRs)
+2026-10-31 12:23:04,670 WARNING sentinel.dashboard: TERMINAL session OPEN user=admin ip=154.180.202.75 (full shell granted)
+2026-10-31 12:23:07,920 WARNING sentinel.dashboard: TERMINAL session CLOSE user=admin ip=154.180.202.75
+2026-10-31 12:39:47,263 INFO    sentinel.run: recon: unprivileged scan — MAC/vendor unavailable (ARP/OS detection need root)
+2026-10-31 12:39:47,268 INFO    sentinel.run: recon: 10.10.1.1 up, 4 port(s)
+2026-10-31 12:39:47,274 INFO    sentinel.run: recon: 10.10.1.99 up, 2 port(s)
+2026-10-31 12:39:47,277 INFO    sentinel.run: recon: under -Pn, "alive" = responded with >=1 open/closed port or a MAC (not merely pinged); 2 alive, 254 no-response address(es) dropped
+2026-10-31 12:39:47,281 INFO    sentinel.run: recon: complete — 2 host(s) up (of 256 scanned), 6 open service(s)
+2026-10-31 12:39:47,303 INFO    sentinel.orchestrator: step red.wifi_scan: running
+2026-10-31 12:39:47,316 INFO    sentinel.run: wifi_scan: enabling monitor mode on wlan0 via iw/ip (NOT airmon-ng; the Pi's networking is untouched)
+2026-10-31 12:39:47,406 INFO    sentinel.run: wifi_scan: capturing on wlan0 for 30s (channel-hopping)
+2026-10-31 12:40:17,427 INFO    sentinel.run: wifi_scan: complete — 7 AP(s), 8 client(s)
+2026-10-31 12:40:17,518 INFO    sentinel.run: wifi_scan: restored wlan0 to managed mode
+2026-10-31 12:40:17,536 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-31 12:40:17,543 INFO    sentinel.run: capture: starting on wlan1 (<=30s, <=20000 pkts, <=51200KB), filter='host 10.10.1.1 or host 10.10.1.99' (from recon)
+2026-10-31 12:40:52,021 INFO    sentinel.run: capture: done — iface=wlan1 packets=395 bytes=94284 duration=34.5s stop=duration
+2026-10-31 12:40:56,157 INFO    sentinel.orchestrator: step blue.esp_sensor: running
+2026-10-31 12:40:56,161 INFO    sentinel.run: esp_sensor: reading /dev/ttyACM0 @ 115200 for 30s (serial)
+2026-10-31 12:41:26,605 INFO    sentinel.run: esp_sensor: serial — 0 detection(s) -> 0 finding(s), 6 heartbeat(s), 0 malformed
+2026-10-31 12:41:26,637 INFO    sentinel.orchestrator: run 2026-10-31_10-18_full-audit_10.10.1.0-24_1405c9 complete: {'hosts_up': 18, 'assets_total': 18, 'findings_total': 12, 'findings_by_severity': {'info': 5, 'low': 2, 'medium': 5, 'high': 0, 'critical': 0}}
+2026-10-31 12:44:56,583 INFO    sentinel.orchestrator: run 2026-10-31_10-44_full-audit_10.10.1.0-24_fafe28: workflow=full_audit target='10.10.1.0/24' steps=['red.recon_nmap', 'red.wifi_scan', 'blue.capture_tshark', 'blue.esp_sensor']
+2026-10-31 12:44:56,599 INFO    sentinel.orchestrator: step red.recon_nmap: running
+2026-10-31 12:44:56,602 WARNING sentinel.run: nmap_privileged set but not running as root; using unprivileged -sT (SYN/OS scans need raw sockets)
+2026-10-31 12:44:56,607 INFO    sentinel.run: recon: scanning 10.10.1.0/24 (full mode) — nmap -sT -sV -T4 --top-ports 1000 --host-timeout 60s
+2026-10-31 12:46:18,647 INFO    sentinel.run: recon: unprivileged scan — MAC/vendor unavailable (ARP/OS detection need root)
+2026-10-31 12:46:18,651 INFO    sentinel.run: recon: 10.10.1.1 up, 4 port(s)
+2026-10-31 12:46:18,655 INFO    sentinel.run: recon: 10.10.1.101 up, 0 port(s)
+2026-10-31 12:46:18,658 INFO    sentinel.run: recon: 10.10.1.102 up, 0 port(s)
+2026-10-31 12:46:18,661 INFO    sentinel.run: recon: 10.10.1.105 up, 0 port(s)
+2026-10-31 12:46:18,665 INFO    sentinel.run: recon: 10.10.1.2 up, 3 port(s)
+2026-10-31 12:46:18,668 INFO    sentinel.run: recon: 10.10.1.23 up, 0 port(s)
+2026-10-31 12:46:18,671 INFO    sentinel.run: recon: 10.10.1.50 up, 0 port(s)
+2026-10-31 12:46:18,674 INFO    sentinel.run: recon: 10.10.1.51 up, 0 port(s)
+2026-10-31 12:46:18,677 INFO    sentinel.run: recon: 10.10.1.52 up, 0 port(s)
+2026-10-31 12:46:18,680 INFO    sentinel.run: recon: 10.10.1.53 up, 0 port(s)
+2026-10-31 12:46:18,684 INFO    sentinel.run: recon: 10.10.1.54 up, 0 port(s)
+2026-10-31 12:46:18,687 INFO    sentinel.run: recon: 10.10.1.55 up, 0 port(s)
+2026-10-31 12:46:18,690 INFO    sentinel.run: recon: 10.10.1.56 up, 0 port(s)
+2026-10-31 12:46:18,693 INFO    sentinel.run: recon: 10.10.1.57 up, 0 port(s)
+2026-10-31 12:46:18,696 INFO    sentinel.run: recon: 10.10.1.58 up, 0 port(s)
+2026-10-31 12:46:18,700 INFO    sentinel.run: recon: 10.10.1.59 up, 0 port(s)
+2026-10-31 12:46:18,703 INFO    sentinel.run: recon: 10.10.1.60 up, 0 port(s)
+2026-10-31 12:46:18,706 INFO    sentinel.run: recon: 10.10.1.61 up, 0 port(s)
+2026-10-31 12:46:18,709 INFO    sentinel.run: recon: 10.10.1.70 up, 0 port(s)
+2026-10-31 12:46:18,712 INFO    sentinel.run: recon: 10.10.1.99 up, 2 port(s)
+2026-10-31 12:46:18,715 INFO    sentinel.run: recon: complete — 20 host(s) up (of 20 scanned), 9 open service(s)
+2026-10-31 12:46:18,740 INFO    sentinel.orchestrator: step red.wifi_scan: running
+2026-10-31 12:46:18,753 INFO    sentinel.run: wifi_scan: enabling monitor mode on wlan0 via iw/ip (NOT airmon-ng; the Pi's networking is untouched)
+2026-10-31 12:46:18,841 INFO    sentinel.run: wifi_scan: capturing on wlan0 for 30s (channel-hopping)
+2026-10-31 12:46:48,878 INFO    sentinel.run: wifi_scan: complete — 7 AP(s), 8 client(s)
+2026-10-31 12:46:49,093 INFO    sentinel.run: wifi_scan: restored wlan0 to managed mode
+2026-10-31 12:46:49,114 INFO    sentinel.orchestrator: step blue.capture_tshark: running
+2026-10-31 12:46:49,121 INFO    sentinel.run: capture: starting on wlan1 (<=30s, <=20000 pkts, <=51200KB), filter='host 10.10.1.1 or host 10.10.1.101 or host 10.10.1.102 or host 10.10.1.105 or host 10.10.1.2 or host 10.10.1.23 or host 10.10.1.50 or host 10.10.1.51 or host 10.10.1.52 or host 10.10.1.53 or host 10.10.1.54 or host 10.10.1.55 or host 10.10.1.56 or host 10.10.1.57 or host 10.10.1.58 or host 10.10.1.59 or host 10.10.1.60 or host 10.10.1.61 or host 10.10.1.70 or host 10.10.1.99' (from recon)
+2026-10-31 12:47:20,097 INFO    sentinel.run: capture: done — iface=wlan1 packets=406 bytes=113596 duration=31.0s stop=duration
+2026-10-31 12:47:24,227 INFO    sentinel.orchestrator: step blue.esp_sensor: running
+2026-10-31 12:47:24,229 INFO    sentinel.run: esp_sensor: reading /dev/ttyACM0 @ 115200 for 30s (serial)
+2026-10-31 12:47:54,676 INFO    sentinel.run: esp_sensor: serial — 0 detection(s) -> 0 finding(s), 6 heartbeat(s), 0 malformed
+2026-10-31 12:47:54,713 INFO    sentinel.orchestrator: run 2026-10-31_10-44_full-audit_10.10.1.0-24_fafe28 complete: {'hosts_up': 36, 'assets_total': 36, 'findings_total': 15, 'findings_by_severity': {'info': 8, 'low': 2, 'medium': 5, 'high': 0, 'critical': 0}}

@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Dashboard data for the ESP wireless-sensor panel.
 
 Reads the most recent `blue.esp_sensor` run from the store (status lives on the

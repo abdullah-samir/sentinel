@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Dashboard runtime settings (readonly + default scan options).
 
 Stored in a gitignored `data/dashboard_settings.json`. Precedence is explicit

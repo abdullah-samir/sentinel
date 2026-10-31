@@ -13,15 +13,21 @@
 # never transmits, deauths, or injects.
 #
 # WHICH DRIVER: the out-of-tree aircrack-ng/rtl8188eus driver is the classic
-# choice, but it does NOT compile on recent kernels (6.13+ changed kbuild and
-# removed timer APIs it relies on), and morrownr's fork has been removed upstream.
-# On those kernels the in-kernel **rtl8xxxu** driver already provides monitor mode
-# for this chip, so the script builds the out-of-tree driver when it can and
-# otherwise verifies/uses rtl8xxxu. It reports which driver ends up providing
-# monitor mode and only blacklists a driver it is actually replacing.
+# choice. Its DEFAULT branch (v5.3.9) does NOT compile on recent kernels (6.13+
+# changed kbuild and removed timer APIs it relies on). BUT the **PR #275 branch**
+# (gglluukk, "build support for kernel 6.7–7.x") DOES build on kernel 6.18 and —
+# unlike the in-kernel rtl8xxxu — actually delivers RX frames in monitor mode
+# (verified on this Pi: 30 real frames captured with tcpdump on 6.18.50). So the
+# script builds that PR branch first; the in-kernel **rtl8xxxu** (which enables
+# monitor mode but captures 0 frames for this chip) is only the last-resort
+# fallback if even PR #275 fails to build. It reports which driver ends up
+# providing monitor mode and only blacklists a driver it is actually replacing.
 set -euo pipefail
 
 AIRCRACK_REPO="https://github.com/aircrack-ng/rtl8188eus"
+# PR #275 branch builds on kernel 6.7–7.x and captures frames (default v5.3.9
+# branch fails on 6.13+). Fetched as a pull ref so no fork URL is needed.
+AIRCRACK_REF="pull/275/head"
 MORROWNR_REPO="https://github.com/morrownr/8188eus"   # removed upstream; probed at runtime
 CLONE_TMP="/usr/src/.sentinel-rtl8188eus-clone"
 BLACKLIST="/etc/modprobe.d/sentinel-rtl8188eus-blacklist.conf"
@@ -47,12 +53,21 @@ read_conf() {  # <KEY> <file>
 # OWN dkms.conf (never a hardcoded '-git'). Returns 0 iff the module built AND
 # installed for the running kernel; otherwise prints the compiler error and
 # cleans up. Idempotent: a prior registration is removed first.
-try_dkms_driver() {  # <repo-url>
-  local repo="$1" name ver src log
-  note "fetching $repo"
+try_dkms_driver() {  # <repo-url> [git-ref]
+  local repo="$1" ref="${2:-}" name ver src log
+  note "fetching $repo${ref:+ (ref: $ref)}"
   rm -rf "$CLONE_TMP"
   if ! git clone --depth 1 "$repo" "$CLONE_TMP" 2>&1 | sed 's/^/    /'; then
     warn "clone failed: $repo"; return 1
+  fi
+  # Optionally switch to a specific ref (e.g. a PR branch) that builds on this
+  # kernel. The default branch of aircrack-ng/rtl8188eus (v5.3.9) does not.
+  if [ -n "$ref" ]; then
+    note "checking out ref $ref"
+    if ! git -C "$CLONE_TMP" fetch --depth 1 origin "$ref:sentinel-build" 2>&1 | sed 's/^/    /' \
+       || ! git -C "$CLONE_TMP" checkout sentinel-build 2>&1 | sed 's/^/    /'; then
+      warn "could not fetch/checkout ref $ref from $repo"; rm -rf "$CLONE_TMP"; return 1
+    fi
   fi
   [ -f "$CLONE_TMP/dkms.conf" ] || { warn "no dkms.conf in $repo"; rm -rf "$CLONE_TMP"; return 1; }
 
@@ -119,10 +134,10 @@ note "kernel headers OK: /lib/modules/${KREL}/build"
 # 2) try the out-of-tree DKMS driver; prefer whatever builds on THIS kernel
 # ---------------------------------------------------------------------------
 DRIVER_OK=0
-if try_dkms_driver "$AIRCRACK_REPO"; then
+if try_dkms_driver "$AIRCRACK_REPO" "$AIRCRACK_REF"; then
   DRIVER_OK=1
 else
-  note "aircrack-ng/rtl8188eus did not build on ${KREL}; trying the morrownr fork…"
+  note "aircrack-ng/rtl8188eus PR #275 did not build on ${KREL}; trying the morrownr fork…"
   if git ls-remote "$MORROWNR_REPO" >/dev/null 2>&1; then
     try_dkms_driver "$MORROWNR_REPO" && DRIVER_OK=1
   else

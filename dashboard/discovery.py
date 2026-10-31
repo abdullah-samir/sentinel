@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """On-demand + background target discovery for the scan launcher.
 
 Two modes (chosen by a Settings toggle):

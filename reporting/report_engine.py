@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Report engine: turn a run JSON into an offline HTML report (+ Markdown, +
 optional PDF).
 

@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Plugin registry + auto-discovery.
 
 `@register` on a Module subclass adds it to the registry keyed by manifest name.

@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Load workflow definitions from `workflows/workflows.yaml`.
 
 A workflow is just data: a name mapping to an ordered list of module names

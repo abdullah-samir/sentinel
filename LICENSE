@@ -1,0 +1,42 @@
+Sentinel — Proprietary License
+© 2026 Abdullah Samir. All rights reserved.
+
+Copyright (c) 2026 Abdullah Samir.
+
+All rights reserved. This software and its associated source code, documentation,
+and other materials (the "Software") are the proprietary and confidential work of
+Abdullah Samir.
+
+No part of the Software may be used, copied, reproduced, modified, merged,
+published, distributed, sublicensed, sold, or otherwise exploited, in whole or in
+part, in any form or by any means, without the prior express written permission
+of Abdullah Samir. No license or other right in the Software is granted, whether
+by implication, estoppel, or otherwise, except as expressly stated above.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR BE
+LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+-------------------------------------------------------------------------------
+Third-party software
+
+This project incorporates, depends on, and/or interoperates with third-party
+open-source software and tools that are NOT covered by this license and remain
+the property of their respective authors under their own licenses. These include,
+without limitation:
+
+  - nmap
+  - tshark / Wireshark
+  - aircrack-ng (including the airodump-ng tool and the rtl8188eus driver)
+  - FastAPI, Starlette, Uvicorn, Jinja2, and the Python standard/third-party
+    libraries listed in pyproject.toml
+  - BeEF, hostapd-mana, and other tooling under pentest-tools/
+  - the ESP32 / Arduino / ESP-IDF frameworks and their libraries
+
+Each such component is licensed under its own terms, and nothing in this license
+grants or restricts any right in that component beyond what its own license
+provides. The proprietary terms above apply only to the original work of
+Abdullah Samir in this repository, not to any third-party or vendored code.

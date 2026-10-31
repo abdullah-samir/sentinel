@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """PTY-backed shell session for the dashboard web terminal.
 
 This provides a REAL interactive shell (a pseudo-terminal running `bash`) so the

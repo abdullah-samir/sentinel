@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """The plugin contract.
 
 Every plugin subclasses `Module`, sets a `Manifest`, and implements

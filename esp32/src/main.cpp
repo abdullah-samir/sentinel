@@ -1,3 +1,4 @@
+// Sentinel — © 2026 Abdullah Samir. All rights reserved.
 // Sentinel ESP32-S3 Wi-Fi attack DETECTION sensor — main.
 //
 // DEFENSIVE / LAB-ONLY. This firmware sniffs 802.11 in promiscuous mode and

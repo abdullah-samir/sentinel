@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Data schema for Sentinel results.
 
 One run -> one `RunResult` -> one JSON file. Everything here is a plain

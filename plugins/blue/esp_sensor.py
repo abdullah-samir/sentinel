@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """blue.esp_sensor — ingest wireless-attack detections from the ESP32-S3 node.
 
 **DEFENSIVE / PASSIVE INGEST.** This module only *reads* from the ESP32-S3

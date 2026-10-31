@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Hardware package + backend factory.
 
 `build_hardware(config)` is the one place that decides mock vs. real. Today it

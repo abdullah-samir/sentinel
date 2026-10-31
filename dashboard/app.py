@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """FastAPI dashboard app (Pass A).
 
 Reuses the engine rather than reimplementing it: core.registry +

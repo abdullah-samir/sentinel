@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """red.wifi_scan — passive Wi-Fi reconnaissance with airodump-ng (Phase 1).
 
 **PASSIVE / OBSERVE-ONLY.** This module listens for 802.11 beacons/probes and

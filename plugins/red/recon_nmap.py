@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """red.recon_nmap — Nmap recon (Phase 1).
 
 Real host discovery + port / service (+ OS, when privileged) scan of the run

@@ -1,3 +1,4 @@
+# Sentinel — © 2026 Abdullah Samir. All rights reserved.
 """Aggregate discovered hosts across all run results into one asset inventory.
 
 Dedupes by MAC (same device across DHCP leases) else by IP, tracks worst
