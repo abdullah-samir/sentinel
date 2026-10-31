@@ -250,6 +250,101 @@ def test_recon_scratch_empty_when_no_hosts(tmp_path, monkeypatch):
     assert ctx.store.get("recon.hosts") is None                 # nothing forwarded
 
 
+# --- unified device-type inference (pure; with and without nmap OS data) ----
+def test_device_type_uses_nmap_when_matched():
+    d = recon_mod.infer_device_type([80], {80: "http"}, "",
+                                    nmap_os_type="router", nmap_matched=True)
+    assert d["device_type"] == "Router" and d["device_confidence"] == "high"
+    assert "nmap OS fingerprint" in d["device_reasoning"]
+
+
+def test_device_type_nmap_general_purpose_label():
+    d = recon_mod.infer_device_type([22], {22: "ssh"}, "",
+                                    nmap_os_type="general purpose", nmap_matched=True)
+    assert d["device_type"] == "Computer / general-purpose host"
+    assert d["device_confidence"] == "high"
+
+
+def test_device_type_printer_heuristic():
+    d = recon_mod.infer_device_type([9100], {9100: "jetdirect"}, "")
+    assert d["device_type"] == "Printer" and d["device_confidence"] == "medium"
+    assert "heuristic" in d["device_reasoning"]
+
+
+def test_device_type_windows_and_nas_and_vendor():
+    assert recon_mod.infer_device_type([445, 139], {445: "microsoft-ds"}, "")["device_type"] \
+        == "Windows host"
+    assert "NAS" in recon_mod.infer_device_type([111, 2049], {2049: "nfs"}, "")["device_type"]
+    assert "Router" in recon_mod.infer_device_type([80], {80: "http"},
+                                                   "Ubiquiti Inc")["device_type"]
+
+
+def test_device_type_one_coherent_guess_not_two():
+    # printer signature wins outright even with an SMB port also open
+    d = recon_mod.infer_device_type([9100, 445], {9100: "jetdirect", 445: "microsoft-ds"}, "")
+    assert d["device_type"] == "Printer"           # single label, not "Printer / Windows"
+
+
+def test_device_type_default_low_confidence():
+    d = recon_mod.infer_device_type([], {}, "")
+    assert d["device_confidence"] == "low" and d["device_type"]
+
+
+# --- enriched asset population (ports / os_accuracy / device / scripts / tls) ---
+def test_recon_enriches_ports_and_device(tmp_path, monkeypatch):
+    tcp = {22: {"state": "open", "name": "ssh", "product": "OpenSSH",
+                "version": "9.2", "extrainfo": "protocol 2.0"},
+           445: {"state": "open", "name": "microsoft-ds"}}
+    up = FakeHost(state="up", protocols={"tcp": tcp}, addresses={"ipv4": "10.0.0.8"})
+    a = _only_asset(tmp_path, monkeypatch, {"10.0.0.8": up})
+    assert a.open_ports == [22, 445]
+    by_port = {p["port"]: p for p in a.ports}
+    assert by_port[22]["service"] == "ssh" and by_port[22]["version"] == "9.2"
+    assert by_port[22]["banner"] == "OpenSSH 9.2 protocol 2.0"
+    assert a.device_type == "Windows host"            # heuristic (no OS data)
+
+
+def test_recon_captures_os_accuracy_and_nmap_device(tmp_path, monkeypatch):
+    up = FakeHost(state="up",
+                  protocols={"tcp": {22: {"state": "open", "name": "ssh"}}},
+                  osmatch=[{"name": "Linux 5.x", "accuracy": "96",
+                            "osclass": [{"type": "general purpose"}]}],
+                  addresses={"ipv4": "10.0.0.8"})
+    a = _only_asset(tmp_path, monkeypatch, {"10.0.0.8": up})
+    assert a.os_guess == "Linux 5.x" and a.os_accuracy == 96
+    assert a.device_type == "Computer / general-purpose host"   # nmap-backed
+    assert a.device_confidence == "high"
+
+
+def test_recon_collects_scripts_tls_http(tmp_path, monkeypatch):
+    tcp = {443: {"state": "open", "name": "https", "script": {
+        "ssl-cert": "Subject: CN=example.com\nIssuer: CN=Test CA\nNot valid after: 2027-01-01",
+        "http-title": "Example Domain"}}}
+    up = FakeHost(state="up", protocols={"tcp": tcp}, addresses={"ipv4": "10.0.0.8"})
+    a = _only_asset(tmp_path, monkeypatch, {"10.0.0.8": up})
+    assert any("ssl-cert" in k for k in a.scripts)
+    assert a.tls.get("subject") == "CN=example.com"
+    assert a.http.get("title") == "Example Domain"
+
+
+def test_recon_truncates_large_script(tmp_path, monkeypatch):
+    big = "x" * 5000
+    tcp = {80: {"state": "open", "name": "http", "script": {"http-enum": big}}}
+    up = FakeHost(state="up", protocols={"tcp": tcp}, addresses={"ipv4": "10.0.0.8"})
+    a = _only_asset(tmp_path, monkeypatch, {"10.0.0.8": up})
+    val = next(v for k, v in a.scripts.items() if "http-enum" in k)
+    assert "truncated" in val and len(val) < 5000
+
+
+def _only_asset(tmp_path, monkeypatch, hosts):
+    monkeypatch.setattr(nmap, "PortScanner", lambda: FakeScanner(hosts))
+    ctx = make_ctx(tmp_path, nmap_fast=False)
+    ReconNmap().run(ctx)
+    assets = [a for a in ctx.store.assets() if a.kind == "host"]
+    assert len(assets) == 1
+    return assets[0]
+
+
 def test_smbv1_is_high(tmp_path, monkeypatch):
     tcp = {445: {"state": "open", "name": "microsoft-ds", "product": "Samba",
                  "version": "", "extrainfo": "SMBv1"}}

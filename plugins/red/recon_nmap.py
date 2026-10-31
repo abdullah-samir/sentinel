@@ -84,6 +84,125 @@ def _is_large_target(target: str) -> bool:
     return net.num_addresses >= LARGE_TARGET_HOSTS
 
 
+# --------------------------------------------------------------------------- #
+# enriched parsing + unified device-type inference (pure, unit-testable)
+# --------------------------------------------------------------------------- #
+_SCRIPT_MAX = 2000           # truncate a single NSE script's output beyond this
+
+# nmap's own osclass "type" -> a friendly label (used when -O ran and matched).
+_NMAP_TYPE_LABELS = {
+    "general purpose": "Computer / general-purpose host",
+    "router": "Router", "broadband router": "Router",
+    "wap": "Wireless access point", "printer": "Printer",
+    "storage-misc": "NAS / storage", "firewall": "Firewall", "switch": "Switch",
+    "webcam": "IP camera", "media device": "Media device", "phone": "Phone",
+    "game console": "Game console", "pda": "Mobile device",
+    "specialized": "Specialized device", "power-device": "Power device",
+    "bridge": "Bridge", "load balancer": "Load balancer",
+}
+
+
+def _truncate(s: str, limit: int = _SCRIPT_MAX) -> str:
+    s = str(s)
+    if len(s) <= limit:
+        return s
+    return s[:limit] + f"\n… [truncated {len(s) - limit} chars]"
+
+
+def _heur(label: str, confidence: str, why: str) -> dict:
+    return {"device_type": label, "device_confidence": confidence,
+            "device_reasoning": f"{why} (heuristic)"}
+
+
+def infer_device_type(open_ports, services=None, vendor: str = "",
+                      nmap_os_type: str = "", nmap_matched: bool = False) -> dict:
+    """ONE coherent device-type guess with confidence + a short 'why'.
+
+    Prefers nmap's own OS/device classification when ``-O`` ran AND matched
+    (high confidence); otherwise falls back to port/service/MAC-vendor heuristics
+    (clearly marked heuristic). Never returns two competing labels. Pure — no
+    nmap object needed, so it unit-tests with and without OS data.
+    """
+    ports = {int(p) for p in (open_ports or [])}
+    services = {int(k): str(v or "").lower() for k, v in (services or {}).items()}
+    svc = " ".join(services.values())
+    vlow = (vendor or "").lower()
+
+    # 1) Trust nmap's fingerprint when it actually matched.
+    if nmap_matched and nmap_os_type:
+        key = nmap_os_type.strip().lower()
+        label = _NMAP_TYPE_LABELS.get(key, nmap_os_type.strip().title())
+        return {"device_type": label, "device_confidence": "high",
+                "device_reasoning": f"nmap OS fingerprint classified this device as "
+                                    f"'{nmap_os_type.strip()}'"}
+
+    def has(*ps):
+        return any(p in ports for p in ps)
+
+    # 2) Heuristics — most specific first; the FIRST match wins (one guess).
+    if has(9100, 515, 631) or "jetdirect" in svc or "printer" in svc or "ipp" in svc:
+        return _heur("Printer", "medium", "print service port(s) open (9100/515/631)")
+    if has(111, 2049) or "nfs" in svc:
+        return _heur("NAS / file server", "medium", "NFS/portmapper port(s) open (111/2049)")
+    if has(32400):
+        return _heur("Media server", "medium", "Plex media-server port open (32400)")
+    if has(1900) or "upnp" in svc or "ssdp" in svc:
+        return _heur("Router / IoT gateway", "medium", "UPnP/SSDP present (1900)")
+    if any(v in vlow for v in ("ubiquiti", "tp-link", "netgear", "mikrotik",
+                               "asustek", "d-link", "zyxel", "aruba", "cisco")):
+        return _heur("Router / access point", "medium", f"network-equipment MAC vendor ({vendor})")
+    if has(53) and (has(80, 443, 23) or len(ports) <= 3):
+        return _heur("Router / DNS gateway", "low", "DNS service open (53)")
+    if has(3389) or has(445, 139):
+        return _heur("Windows host", "medium", "SMB/RDP port(s) open (445/139/3389)")
+    if "raspberry" in vlow:
+        return _heur("Single-board computer (Raspberry Pi)", "medium", f"MAC vendor {vendor}")
+    if has(22) and not has(80, 443, 8080, 8443):
+        return _heur("Server / host (SSH)", "low", "SSH open, no web service")
+    if has(80, 443, 8080, 8443):
+        return _heur("Web server / appliance", "low", "HTTP(S) service open")
+    if ports:
+        return _heur("Networked host", "low",
+                     f"{len(ports)} open port(s), no distinctive signature")
+    return _heur("Host", "low", "no open ports observed")
+
+
+def _port_detail(proto: str, port: int, info: dict) -> dict:
+    name = info.get("name", "") or ""
+    product = info.get("product", "") or ""
+    version = info.get("version", "") or ""
+    extrainfo = info.get("extrainfo", "") or ""
+    banner = " ".join(x for x in (product, version, extrainfo) if x)
+    return {"port": int(port), "proto": proto, "state": info.get("state", "") or "",
+            "service": name, "product": product, "version": version,
+            "extrainfo": extrainfo, "banner": banner}
+
+
+def _parse_ssl_cert(output: str) -> dict:
+    d = {}
+    for line in str(output).splitlines():
+        line = line.strip()
+        for key in ("Subject:", "Issuer:", "Not valid before:", "Not valid after:"):
+            if line.startswith(key):
+                d[key.rstrip(":").lower().replace(" ", "_")] = line[len(key):].strip()
+    return d
+
+
+def _extract_tls_http(scripts: dict):
+    """Pull an optional TLS cert summary + HTTP server/title from NSE output."""
+    tls, http = {}, {}
+    for sid, out in scripts.items():
+        low = sid.lower()
+        if "ssl-cert" in low and not tls:
+            tls = _parse_ssl_cert(out)
+        if "http-title" in low:
+            first = next((ln for ln in str(out).splitlines() if ln.strip()), "")
+            http["title"] = first.strip()[:200]
+        if "http-server-header" in low:
+            http["server"] = str(out).strip()[:200]
+    return tls, http
+
+
 @register
 class ReconNmap(Module):
     manifest = Manifest(
@@ -252,21 +371,35 @@ class ReconNmap(Module):
         except Exception:  # noqa: BLE001
             hostname = ""
 
-        # OS guess: best osmatch by accuracy (only when -O was used = full+priv)
+        # OS guess: best osmatch by accuracy (only when -O was used = full+priv).
+        # Also capture the accuracy (nullable) and nmap's own device "type".
         os_guess = ""
+        os_accuracy = None
+        nmap_os_type = ""
         osmatch = data.get("osmatch", []) or []
         if osmatch:
             try:
                 best = max(osmatch, key=lambda m: int(m.get("accuracy", 0)))
-                os_guess = best.get("name", "")
             except Exception:  # noqa: BLE001
-                os_guess = osmatch[0].get("name", "")
+                best = osmatch[0]
+            os_guess = best.get("name", "")
+            try:
+                acc = best.get("accuracy")
+                os_accuracy = int(acc) if acc not in (None, "") else None
+            except (TypeError, ValueError):
+                os_accuracy = None
+            osclass = best.get("osclass") or []
+            if osclass and isinstance(osclass[0], dict):
+                nmap_os_type = osclass[0].get("type", "") or ""
 
         # One pass: collect open ports + pending findings, and note whether the
         # host answered any probe (an open OR closed port proves it is alive; a
         # "filtered"/unanswered port does not).
         open_ports = []
         pending = []
+        port_details = []
+        scripts: dict = {}
+        services: dict = {}
         responsive_port = False
         for proto in data.all_protocols():
             if proto not in ("tcp", "udp", "sctp"):
@@ -283,6 +416,13 @@ class ReconNmap(Module):
                 product = info.get("product", "") or ""
                 version = info.get("version", "") or ""
                 extrainfo = info.get("extrainfo", "") or ""
+                port_details.append(_port_detail(proto, port, info))
+                services[port] = name
+                # per-port NSE output (present only when -sC/scripts ran)
+                pscripts = info.get("script") or {}
+                if isinstance(pscripts, dict):
+                    for sid, out in pscripts.items():
+                        scripts[f"{sid} ({port}/{proto})"] = _truncate(out)
                 blob = " ".join(x for x in (name, product, version, extrainfo) if x).lower()
                 sev, reason = _classify(port, name, blob)
                 svc = " ".join(x for x in (product, version, extrainfo) if x)
@@ -294,6 +434,11 @@ class ReconNmap(Module):
                     tags=tags,
                 ))
 
+        # host-level NSE scripts (e.g. smb-os-discovery) when scripts ran
+        for hs in (data.get("hostscript") or []):
+            if isinstance(hs, dict) and hs.get("id"):
+                scripts[hs["id"]] = _truncate(hs.get("output", ""))
+
         responded = responsive_port or bool(mac) or bool(hostname) or bool(os_guess)
         if pn and not responded:
             ctx.log.debug("recon: %s returned nothing under -Pn; dropping (not alive)", host)
@@ -302,9 +447,17 @@ class ReconNmap(Module):
         for pf in pending:
             ctx.store.add_finding(module=self.manifest.name, **pf)
         open_ports = sorted(set(open_ports))
+        device = infer_device_type(open_ports, services, vendor,
+                                   nmap_os_type=nmap_os_type, nmap_matched=bool(osmatch))
+        tls, http = _extract_tls_http(scripts)
         ctx.store.add_asset(
             ip=host, alive=True, open_ports=open_ports,
-            os_guess=os_guess, mac=mac, vendor=vendor, hostname=hostname,
+            os_guess=os_guess, os_accuracy=os_accuracy, mac=mac, vendor=vendor,
+            hostname=hostname, ports=port_details, scripts=scripts, tls=tls, http=http,
+            device_type=device["device_type"],
+            device_confidence=device["device_confidence"],
+            device_reasoning=device["device_reasoning"],
         )
-        ctx.log.info("recon: %s up, %d port(s)", host, len(open_ports))
+        ctx.log.info("recon: %s up, %d port(s), device=%s (%s)",
+                     host, len(open_ports), device["device_type"], device["device_confidence"])
         return len(pending)

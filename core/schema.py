@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 class Severity(str, Enum):
@@ -106,6 +106,19 @@ class Asset:
     hostname: str = ""
     open_ports: List[int] = field(default_factory=list)
     os_guess: str = ""
+    # --- enriched recon detail (red.recon_nmap); all optional, default-empty so
+    # older assets / other modules are unaffected and old result JSONs that lack
+    # them read back fine (readers must use .get with defaults). ---
+    os_accuracy: Optional[int] = None  # best OS match accuracy %, or None
+    device_type: str = ""              # ONE coherent guess (never two labels)
+    device_confidence: str = ""        # "high" | "medium" | "low" (heuristic)
+    device_reasoning: str = ""         # short "why" for the device_type guess
+    # per-port rich detail: [{port, proto, state, service, product, version,
+    # extrainfo, banner}] — open_ports (above) stays the simple int list.
+    ports: List[Dict] = field(default_factory=list)
+    scripts: Dict = field(default_factory=dict)   # NSE: "script-id" -> output (truncated+noted)
+    tls: Dict = field(default_factory=dict)        # optional cert summary
+    http: Dict = field(default_factory=dict)       # optional {server, title}
     # --- wireless (red.wifi_scan); defaults keep host assets byte-identical ---
     kind: str = "host"                 # "host" | "wifi_ap" | "wifi_client"
     ssid: str = ""                     # AP network name (ESSID)
