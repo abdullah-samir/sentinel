@@ -13,8 +13,10 @@ Scan profile (fast vs full):
 Mode precedence: CLI flag (``--fast``/``--full``) overrides config
 (``nmap_fast``), which overrides the target-size auto-default.
 
-Privilege: ``-sS`` (SYN) + ``-O`` only when ``config.nmap_privileged`` AND root;
-otherwise it logs and falls back to ``-sT`` (raw sockets needed for SYN/OS).
+Privilege: ``-sS`` (SYN) + ``-O`` require ``config.nmap_privileged`` ("Privileged
+scan mode"). The elevation comes from root when the process is root, else from the
+tightly-scoped ``sudo nmap`` grant (deploy/sudoers.d/sentinel-wifi) — the dashboard
+never runs as root. With privileged mode off, those options are refused up front.
 
 Host discovery: ``config.nmap_pn`` (``--pn`` / ``SENTINEL_NMAP_PN``) adds ``-Pn``,
 which skips host discovery and treats every address as up. Useful for hosts that
@@ -413,15 +415,18 @@ class ReconNmap(Module):
         return _is_large_target(target)          # auto: fast for /24-or-larger
 
     def _privileged(self, ctx) -> bool:
-        if not ctx.config.nmap_privileged:
-            return False
-        if os.geteuid() != 0:
-            ctx.log.warning(
-                "nmap_privileged set but not running as root; using unprivileged "
-                "-sT (SYN/OS scans need raw sockets)"
-            )
-            return False
-        return True
+        """Whether privileged nmap (SYN -sS / OS -O) is permitted. Gated by the
+        operator's "Privileged scan mode" (config.nmap_privileged). The elevation
+        itself comes either from already being root OR, when not root, from the
+        scoped `sudo nmap` grant (see _use_sudo + deploy/sudoers.d/sentinel-wifi)
+        — so the dashboard never has to run as root."""
+        return bool(ctx.config.nmap_privileged)
+
+    def _use_sudo(self, ctx) -> bool:
+        """Run nmap through the scoped sudo grant when privileged is requested and
+        we are not already root. Root already has raw sockets; otherwise SYN/OS
+        detection needs the tightly-scoped (NOPASSWD, nmap-only) sudoers rule."""
+        return bool(ctx.config.nmap_privileged) and os.geteuid() != 0
 
     def _build_args(self, ctx, target: str) -> Tuple[str, bool]:
         """Return (nmap argument string, fast?). Delegates to the unified plan
@@ -462,8 +467,12 @@ class ReconNmap(Module):
                          "is treated as up (slower on large CIDRs)")
 
         try:
+            use_sudo = self._use_sudo(ctx)
+            if use_sudo:
+                ctx.log.info("recon: privileged scan via scoped `sudo nmap` "
+                             "(dashboard is not root; SYN/OS need raw sockets)")
             scanner = nmap.PortScanner()
-            scanner.scan(hosts=target, arguments=arguments)
+            scanner.scan(hosts=target, arguments=arguments, sudo=use_sudo)
         except Exception as e:  # noqa: BLE001 — a scan failure must not crash the run
             ctx.log.error("nmap scan failed: %s", e)
             ctx.store.add_finding(

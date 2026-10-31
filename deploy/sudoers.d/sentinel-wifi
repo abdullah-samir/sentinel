@@ -8,6 +8,8 @@
 # Install:  sudo install -m 0440 deploy/sudoers.d/sentinel-wifi /etc/sudoers.d/sentinel-wifi
 # Verify:   sudo visudo -cf /etc/sudoers.d/sentinel-wifi
 #
-# NOTE: scoped to the capture/monitor binaries only. red.wifi_scan is PASSIVE —
-# it never injects/deauths; airodump-ng is run without any injection option.
-sentinel ALL=(root) NOPASSWD: /usr/sbin/iw, /usr/sbin/ip, /usr/sbin/airodump-ng
+# NOTE: scoped to specific binaries only — NOT a broad/wildcard grant, no shell.
+# red.wifi_scan is PASSIVE (airodump-ng runs without any injection option).
+# nmap is included ONLY so "Privileged scan mode" can run the SYN (-sS) / OS (-O)
+# scans the recon module already supports, without the dashboard running as root.
+sentinel ALL=(root) NOPASSWD: /usr/sbin/iw, /usr/sbin/ip, /usr/sbin/airodump-ng, /usr/bin/nmap

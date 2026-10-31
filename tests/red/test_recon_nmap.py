@@ -164,13 +164,56 @@ def test_fast_with_privileged_is_syn_no_version_no_os(tmp_path, monkeypatch):
     assert "--top-ports 100" in args
 
 
-def test_privileged_falls_back_when_not_root(tmp_path, monkeypatch):
+def test_privileged_nonroot_uses_syn_os_via_scoped_sudo(tmp_path, monkeypatch):
+    # "Privileged scan mode" now works without the dashboard being root: SYN/OS
+    # args are chosen and nmap runs via the scoped `sudo nmap` grant.
     monkeypatch.setattr(os, "geteuid", lambda: 1000)
-    args, _ = ReconNmap()._build_args(
-        make_ctx(tmp_path, nmap_fast=False, nmap_privileged=True), "10.0.0.5")
-    assert "-sT" in args and "-sS" not in args
-    assert "-sV" in args                # still full mode
-    assert "-O" not in args
+    ctx = make_ctx(tmp_path, nmap_fast=False, nmap_privileged=True)
+    args, _ = ReconNmap()._build_args(ctx, "10.0.0.5")
+    assert "-sS" in args and "-sT" not in args and "-O" in args and "-sV" in args
+    assert ReconNmap()._use_sudo(ctx) is True        # elevated via scoped sudo
+
+
+def test_privileged_off_is_unprivileged_connect_scan(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    ctx = make_ctx(tmp_path, nmap_fast=False)        # privileged mode off (default)
+    args, _ = ReconNmap()._build_args(ctx, "10.0.0.5")
+    assert "-sT" in args and "-sS" not in args and "-O" not in args
+    assert ReconNmap()._use_sudo(ctx) is False
+
+
+def test_run_passes_sudo_when_privileged_nonroot(tmp_path, monkeypatch):
+    rec = {}
+
+    class _Fake:
+        def scan(self, hosts=None, arguments=None, sudo=False, **kw):
+            rec["sudo"] = sudo
+            return {}
+
+        def all_hosts(self):
+            return []
+
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(nmap, "PortScanner", lambda: _Fake())
+    ReconNmap().run(make_ctx(tmp_path, target="10.0.0.5", nmap_privileged=True))
+    assert rec["sudo"] is True
+
+
+def test_run_no_sudo_when_privileged_off(tmp_path, monkeypatch):
+    rec = {}
+
+    class _Fake:
+        def scan(self, hosts=None, arguments=None, sudo=False, **kw):
+            rec["sudo"] = sudo
+            return {}
+
+        def all_hosts(self):
+            return []
+
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    monkeypatch.setattr(nmap, "PortScanner", lambda: _Fake())
+    ReconNmap().run(make_ctx(tmp_path, target="10.0.0.5"))     # privileged off
+    assert rec["sudo"] is False
 
 
 # --- full-mode scan: assets + findings + version evidence -----------------

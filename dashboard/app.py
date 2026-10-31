@@ -519,7 +519,8 @@ def create_app(core_config: Optional[Config] = None,
                       workflow=workflow, prefill=prefill, active=run_state.current(),
                       option_groups=launcher.workflow_option_groups(core_config, workflow),
                       module_required=launcher.module_required(core_config, workflow),
-                      iface_choices=iface_choices, privileged=(os.geteuid() == 0),
+                      iface_choices=iface_choices,
+                      privileged=(bool(core_config.nmap_privileged) or os.geteuid() == 0),
                       scan_estimate=_recon_estimate(core_config, prefill.get("target", "")),
                       discovery=_discovery_view())
 
@@ -910,10 +911,11 @@ def create_app(core_config: Optional[Config] = None,
                       cfg={"nmap_timing": core_config.nmap_timing,
                            "nmap_top_ports": core_config.nmap_top_ports,
                            "nmap_timeout": core_config.nmap_timeout,
-                           "wifi_iface": core_config.wifi_iface},
+                           "wifi_iface": core_config.wifi_iface,
+                           "nmap_privileged": core_config.nmap_privileged},
                       pins={f: settings_mod.env_pinned(f)
                             for f in ("readonly", "nmap_timing", "nmap_top_ports",
-                                      "nmap_timeout", "wifi_iface")},
+                                      "nmap_timeout", "wifi_iface", "nmap_privileged")},
                       info={"version": _version(), "modules": modules, "runs": runs,
                             "free_gb": round(free / 1e9, 1) if free >= 0 else "?"},
                       discovery=settings_mod.discovery_prefs(core_config),
@@ -957,6 +959,9 @@ def create_app(core_config: Optional[Config] = None,
             changes["discovery_seconds"] = form["discovery_seconds"]
         if "target_discovery_mode" in form:
             changes["target_discovery_mode"] = form["target_discovery_mode"]
+        # Privileged scan mode — readonly-blocked (ignored while read-only).
+        if not dash_config.readonly:
+            changes["nmap_privileged"] = form.get("nmap_privileged") in ("1", "on", "true")
         try:
             settings_mod.update(core_config, dash_config, changes)
         except ValueError:

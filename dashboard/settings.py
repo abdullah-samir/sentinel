@@ -26,6 +26,7 @@ _ENV_PINS = {
     "nmap_top_ports": "SENTINEL_NMAP_TOP_PORTS",
     "nmap_timeout": "SENTINEL_NMAP_TIMEOUT",
     "wifi_iface": "SENTINEL_WIFI_IFACE",
+    "nmap_privileged": "SENTINEL_NMAP_PRIVILEGED",
 }
 
 _IFACE_RE = re.compile(r"^[A-Za-z0-9._:-]{0,32}$")   # "" = auto-detect
@@ -67,6 +68,8 @@ def apply_to(config, dash_config) -> None:
     for field in ("nmap_timing", "nmap_top_ports", "nmap_timeout", "wifi_iface"):
         if field in data and not env_pinned(field):
             setattr(config, field, data[field])
+    if "nmap_privileged" in data and not env_pinned("nmap_privileged"):
+        config.nmap_privileged = bool(data["nmap_privileged"])
 
 
 def discovery_prefs(config) -> Dict:
@@ -122,6 +125,8 @@ def update(config, dash_config, changes: Dict) -> Dict:
         if m not in ("on_demand", "background"):
             raise ValueError("invalid target discovery mode")
         data["target_discovery_mode"] = m
+    if "nmap_privileged" in changes:
+        data["nmap_privileged"] = bool(changes["nmap_privileged"])
     save(config, data)
     apply_to(config, dash_config)
     return data

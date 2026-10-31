@@ -111,6 +111,13 @@
       </span>
     </div>
 
+    {% if not privileged %}
+    <div class="banner warn" style="font-size:12px;margin:8px 0">
+      Privileged options (SYN&nbsp;-sS, UDP&nbsp;-sU, OS&nbsp;-O) are off — enable
+      <a href="/settings">Privileged scan mode</a> in Settings to use them. Choosing
+      one while it's off is refused.
+    </div>
+    {% endif %}
     <details style="margin-top:6px">
       <summary style="cursor:pointer;font-weight:600;font-size:13px">Advanced options (every nmap setting)</summary>
       {% for grp, gspecs in specs|groupby('group') %}
