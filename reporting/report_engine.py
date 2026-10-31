@@ -231,10 +231,20 @@ def build_context(run: dict, diff: Optional[dict] = None) -> dict:
             "score": sc,
             "alive": bool(a.get("alive")) if a else False,
             "open_ports": (a.get("open_ports") or []) if a else [],
+            "port_count": len(a.get("open_ports") or []) if a else 0,
             "os_guess": a.get("os_guess", "") if a else "",
             "mac": a.get("mac", "") if a else "",
             "vendor": a.get("vendor", "") if a else "",
             "hostname": a.get("hostname", "") if a else "",
+            # enriched recon detail (all default-safe for old/other runs)
+            "os_accuracy": a.get("os_accuracy") if a else None,
+            "device_type": a.get("device_type", "") if a else "",
+            "device_confidence": a.get("device_confidence", "") if a else "",
+            "device_reasoning": a.get("device_reasoning", "") if a else "",
+            "ports": (a.get("ports") or []) if a else [],
+            "scripts": (a.get("scripts") or {}) if a else {},
+            "tls": (a.get("tls") or {}) if a else {},
+            "http": (a.get("http") or {}) if a else {},
             "findings": [_decorate(f) for f in sort_findings(fs)],
         })
     # worst score first; among ties, real hosts (with assets) before scan-level

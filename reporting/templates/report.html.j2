@@ -195,7 +195,11 @@
       <div class="hh">
         <span class="ip">{{ h.target }}</span>
         <span class="gbadge" style="background:{{ h.grade_color }}">{{ h.grade }}</span>
-        {% if not h.has_asset %}<span class="muted">scan-level</span>{% endif %}
+        {% if h.has_asset %}
+          <span class="muted">{{ 'alive' if h.alive else 'down' }}</span>
+          <span class="muted">{{ h.port_count }} port{{ '' if h.port_count == 1 else 's' }}</span>
+          {% if h.device_type %}<span class="pill" style="background:#1a2232;color:#8B98AB">{{ h.device_type }}</span>{% endif %}
+        {% else %}<span class="muted">scan-level</span>{% endif %}
         <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
       </div>
       <div class="host-body">
@@ -209,6 +213,57 @@
           {% endif %}
           <span>risk score: <code>{{ h.score }}</code></span>
         </div>
+        {% if h.has_asset and (h.ports or h.device_type or h.scripts or h.tls or h.http or h.mac) %}
+        <details class="host-detail" style="margin:0 0 10px">
+          <summary style="cursor:pointer;color:var(--muted);font-size:13px">Host details</summary>
+          <div style="margin-top:8px;font-size:13px">
+            {% if h.device_type %}
+            <div style="margin-bottom:6px"><strong>Device type:</strong> {{ h.device_type }}
+              {% if h.device_confidence %}<span class="muted">({{ h.device_confidence }} confidence)</span>{% endif %}
+              {% if h.device_reasoning %}<div class="muted">why: {{ h.device_reasoning }}</div>{% endif %}
+            </div>
+            {% endif %}
+            {% if h.os_guess %}
+            <div style="margin-bottom:6px"><strong>OS guess:</strong> {{ h.os_guess }}{% if h.os_accuracy is not none %} <span class="muted">({{ h.os_accuracy }}% accuracy)</span>{% endif %}</div>
+            {% endif %}
+            {% if h.hostname or h.mac or h.vendor %}
+            <div style="margin-bottom:6px" class="mono">{% if h.hostname %}host={{ h.hostname }} {% endif %}{% if h.mac %}mac={{ h.mac }} {% endif %}{% if h.vendor %}vendor={{ h.vendor }}{% endif %}</div>
+            {% endif %}
+            {% if h.tls %}<div style="margin-bottom:6px"><strong>TLS cert:</strong> <span class="mono">{% for k, v in h.tls.items() %}{{ k }}={{ v }} {% endfor %}</span></div>{% endif %}
+            {% if h.http %}<div style="margin-bottom:6px"><strong>HTTP:</strong> <span class="mono">{% if h.http.server %}server={{ h.http.server }} {% endif %}{% if h.http.title %}title={{ h.http.title }}{% endif %}</span></div>{% endif %}
+            {% if h.ports %}
+            <table style="width:100%;border-collapse:collapse;font-size:12px;margin:6px 0">
+              <thead><tr>
+                <th style="text-align:left;color:var(--muted)">Port</th>
+                <th style="text-align:left;color:var(--muted)">Service</th>
+                <th style="text-align:left;color:var(--muted)">Version</th>
+                <th style="text-align:left;color:var(--muted)">Banner</th>
+              </tr></thead>
+              <tbody>
+              {% for p in h.ports %}
+                <tr>
+                  <td class="mono">{{ p.port }}/{{ p.proto }}</td>
+                  <td class="mono">{{ p.service or '—' }}</td>
+                  <td class="mono">{{ (p.product ~ ' ' ~ p.version) | trim or '—' }}</td>
+                  <td class="mono">{{ p.banner or '—' }}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+            {% endif %}
+            {% if h.scripts %}
+            <div style="margin-top:6px"><strong>NSE scripts ({{ h.scripts | length }}):</strong>
+              {% for sid, out in h.scripts.items() %}
+              <details style="margin:4px 0">
+                <summary class="mono" style="cursor:pointer">{{ sid }}</summary>
+                <pre style="white-space:pre-wrap;font-size:12px;margin:4px 0">{{ out }}</pre>
+              </details>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+        </details>
+        {% endif %}
         {% for f in h.findings %}
         <div class="finding" data-fid="{{ f.finding_id }}" data-sev="{{ f.severity }}">
           <span class="chip" style="background:{{ f.color }}">{{ f.severity }}</span>
