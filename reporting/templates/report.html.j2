@@ -6,15 +6,33 @@
 <title>Sentinel report — {{ run.workflow }} — {{ run.run_id }}</title>
 <script>document.documentElement.classList.add('js')</script>
 <style>
+  /* self-hosted fonts (served by the dashboard; a standalone file falls back) */
+  @font-face{font-family:"Space Grotesk";font-weight:700;font-display:swap;src:url("/static/fonts/spacegrotesk-700.woff2") format("woff2")}
+  @font-face{font-family:"InterS";font-weight:400;font-display:swap;src:url("/static/fonts/inter-400.woff2") format("woff2")}
+  @font-face{font-family:"InterS";font-weight:600;font-display:swap;src:url("/static/fonts/inter-600.woff2") format("woff2")}
+  @font-face{font-family:"JetBrains Mono";font-weight:400;font-display:swap;src:url("/static/fonts/jetbrainsmono-400.woff2") format("woff2")}
   :root{
-    --bg:#0E1420; --panel:#151D2C; --border:#24324A; --ink:#EAF0F8; --muted:#8B98AB;
-    --teal:#2DD4BF; --orange:#F5953E; --red:#E5484D;
-    --sans:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    --mono:ui-monospace, Menlo, Consolas, monospace;
+    --bg:#0A0E16; --panel:#151D2C; --surface-1:#111826; --border:#22304A; --border-strong:#31425f;
+    --ink:#EAF1FB; --muted:#7E8CA3; --teal:#22D3EE; --cyan:#22D3EE; --orange:#FF9B3D; --red:#FF4D5E;
+    --glow:rgba(34,211,238,.4);
+    --sans:"InterS", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --mono:"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    --display:"Space Grotesk", var(--sans);
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:15px}
-  a{color:var(--teal)}
+  body{margin:0;color:var(--ink);font-family:var(--sans);line-height:1.55;font-size:15px;
+    background:
+      radial-gradient(1000px 560px at 80% -10%, rgba(34,211,238,.08), transparent 60%),
+      radial-gradient(800px 520px at 5% 110%, rgba(167,139,250,.07), transparent 55%),
+      linear-gradient(180deg,#0D121D,#0A0E16 42%);background-attachment:fixed}
+  a{color:var(--cyan)}
+  header.top .t,h2,h3{font-family:var(--display);letter-spacing:-.01em}
+  .gbadge{box-shadow:0 0 16px -8px currentColor}
+  .panel{background:linear-gradient(180deg,#151D2C,#111826)}
+  .host{transition:border-color .2s,box-shadow .2s} .host:hover{border-color:var(--border-strong)}
+  details.host-detail[open]>*:not(summary){animation:dOpen .22s cubic-bezier(.16,1,.3,1)}
+  @keyframes dOpen{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
   .wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}
   header.top{display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border);
        padding-bottom:16px;margin-bottom:16px}

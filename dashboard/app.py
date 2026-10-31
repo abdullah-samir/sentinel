@@ -61,9 +61,9 @@ _EVENT_TOPICS = ("run.start", "step.start", "step.done", "step.skip",
 log = logging.getLogger("sentinel.dashboard")
 
 SEV_ORDER = ["critical", "high", "medium", "low", "info"]
-SEV_COLOR = {"critical": "#E5484D", "high": "#F5953E", "medium": "#E0B341",
-             "low": "#2DD4BF", "info": "#8B98AB"}
-GRADE_COLOR = {"A": "#2DD4BF", "B": "#A3D977", "C": "#E0B341", "D": "#F5953E", "F": "#E5484D"}
+SEV_COLOR = {"critical": "#FF4D5E", "high": "#FF9B3D", "medium": "#F2C94C",
+             "low": "#2DD4BF", "info": "#7E8CA3"}
+GRADE_COLOR = {"A": "#2DD4BF", "B": "#8FD16B", "C": "#F2C94C", "D": "#FF9B3D", "F": "#FF4D5E"}
 GRADE_RANK = {"A": 0, "B": 1, "C": 2, "D": 3, "F": 4}
 
 # Overview sort keys -> (row field accessor). Server-side so it works without JS

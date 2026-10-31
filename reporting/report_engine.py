@@ -35,15 +35,15 @@ _TEMPLATES = Path(__file__).parent / "templates"
 
 # Severity -> swatch (critical/high fixed by the brief; the rest fit the theme).
 SEVERITY_COLOR: Dict[str, str] = {
-    "critical": "#E5484D",
-    "high": "#F5953E",
-    "medium": "#E0B341",
+    "critical": "#FF4D5E",
+    "high": "#FF9B3D",
+    "medium": "#F2C94C",
     "low": "#2DD4BF",
-    "info": "#8B98AB",
+    "info": "#7E8CA3",
 }
 # Grade -> swatch (A teal/good ... F red/bad).
 GRADE_COLOR: Dict[str, str] = {
-    "A": "#2DD4BF", "B": "#A3D977", "C": "#E0B341", "D": "#F5953E", "F": "#E5484D",
+    "A": "#2DD4BF", "B": "#8FD16B", "C": "#F2C94C", "D": "#FF9B3D", "F": "#FF4D5E",
 }
 SEV_ORDER = ["critical", "high", "medium", "low", "info"]
 

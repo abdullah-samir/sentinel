@@ -303,3 +303,7 @@ details>summary:hover{color:var(--cyan)}
 .sum-list li{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid var(--hairline)}
 .sum-list li .k{color:var(--muted)} .sum-list li .v{font-family:var(--font-mono);text-align:right;word-break:break-word}
 .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+
+/* reveal content when a <details> opens (interfaces / advanced / asset detail) */
+details[open]>*:not(summary){animation:detailOpen var(--dur) var(--ease-out)}
+@keyframes detailOpen{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
