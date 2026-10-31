@@ -22,4 +22,4 @@ esp_monitor:
   steps: [blue.esp_sensor]
 
 full_audit:
-  steps: [red.recon_nmap, blue.capture_tshark, ml.detector_template]
+  steps: [red.recon_nmap, blue.capture_tshark]

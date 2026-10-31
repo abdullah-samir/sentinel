@@ -23,8 +23,8 @@ def modules():
     return registry.discover(force=True)
 
 
-def test_discovery_finds_the_three_templates(modules):
-    for name in ("red.recon_nmap", "blue.capture_tshark", "ml.detector_template"):
+def test_discovery_finds_core_modules(modules):
+    for name in ("red.recon_nmap", "blue.capture_tshark"):
         assert name in modules, f"{name} was not discovered"
 
 

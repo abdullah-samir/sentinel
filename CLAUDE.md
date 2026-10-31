@@ -237,7 +237,7 @@ class Config:
 ## Workflows — `workflows/workflows.yaml` (Phase 0: only built modules)
 ```yaml
 quick_recon: { steps: [red.recon_nmap] }
-full_audit:  { steps: [red.recon_nmap, blue.capture_tshark, ml.detector_template] }
+full_audit:  { steps: [red.recon_nmap, blue.capture_tshark] }
 # wireless_check: added later, once red.wifi_scan and ml.detector_deauth exist
 ```
 

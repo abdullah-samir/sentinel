@@ -143,9 +143,9 @@ def test_empty_run_renders_cleanly():
 def test_all_skipped_banner():
     run = dict(EMPTY)
     run["findings"] = [
-        {"finding_id": "f-1", "module": "ml.detector_template", "type": "skipped",
-         "severity": "info", "target": "10.0.0.0/24", "title": "ml skipped",
-         "detail": "skipped: no model", "evidence": "", "timestamp": "x", "tags": []},
+        {"finding_id": "f-1", "module": "blue.capture_tshark", "type": "skipped",
+         "severity": "info", "target": "10.0.0.0/24", "title": "capture skipped",
+         "detail": "skipped: tshark not installed", "evidence": "", "timestamp": "x", "tags": []},
     ]
     run["stats"] = {**EMPTY["stats"], "findings_total": 1,
                     "findings_by_severity": {**EMPTY["stats"]["findings_by_severity"],

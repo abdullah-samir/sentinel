@@ -28,7 +28,7 @@ def make_env(tmp_path, readonly=False):
     (wf / "workflows.yaml").write_text(
         "quick_recon: { steps: [red.recon_nmap] }\n"
         "capture_only: { steps: [blue.capture_tshark] }\n"
-        "full_audit: { steps: [red.recon_nmap, blue.capture_tshark, ml.detector_template] }\n",
+        "full_audit: { steps: [red.recon_nmap, blue.capture_tshark] }\n",
         encoding="utf-8")
     dc = DashConfig(user="admin", password_hash=hash_password(PW), secret=SECRET,
                     readonly=readonly, path=tmp_path / "data" / "dashboard.json")
