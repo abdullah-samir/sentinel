@@ -32,9 +32,11 @@ from pathlib import Path
 from shutil import which
 from typing import List, Optional, Tuple
 
+from core import state as _state
 from core.module import Module, Manifest
 from core.registry import register
 from core.schema import Severity
+from core.state import get_interface_registry
 
 # RTL8188EUS presents under one of these driver module names (new out-of-tree
 # `rtl8188eus`, or the legacy in-kernel `r8188eu`) and these USB ids.
@@ -134,32 +136,13 @@ def _is_rtl8188eus(iface: str) -> bool:
     return _iface_usb_id(iface) in RTL_USB_IDS
 
 
-def _default_route_iface() -> Optional[str]:
-    """Interface carrying the default route (the Pi's uplink)."""
-    rc, out = _run_cmd(["ip", "route"], timeout=5)
-    for line in out.splitlines():
-        if line.startswith("default"):
-            parts = line.split()
-            if "dev" in parts:
-                return parts[parts.index("dev") + 1]
-    return None
-
-
-def _ssh_iface() -> str:
-    """Interface that owns the local IP of the active SSH connection, so we can
-    refuse to tear it down. "" when not under SSH / not determinable."""
-    conn = os.environ.get("SSH_CONNECTION", "")
-    parts = conn.split()
-    if len(parts) < 3:
-        return ""
-    server_ip = parts[2]
-    rc, out = _run_cmd(["ip", "-o", "addr", "show"], timeout=5)
-    for line in out.splitlines():
-        toks = line.split()
-        # "<idx>: <iface> <family> <ip>/<prefix> ..."
-        if len(toks) >= 4 and toks[3].split("/")[0] == server_ip:
-            return toks[1]
-    return ""
+# Default-route / SSH interface detection lives ONCE in core.state so the
+# self-lockout guard here and the central interface-safety check share a single
+# implementation. These module-level aliases keep the historic names (and keep
+# them monkeypatchable in this module's tests); everything below calls them via
+# the module global, so a test that rebinds them is honored.
+_default_route_iface = _state.default_route_iface
+_ssh_iface = _state.ssh_iface
 
 
 def _iface_phy(iface: str) -> str:
@@ -214,15 +197,12 @@ def detect_adapter(config) -> Optional[str]:
 
 def _self_link_reason(iface: str) -> str:
     """Non-empty reason to REFUSE `iface` because using it would drop the Pi's
-    own connectivity (default route or active SSH)."""
-    if iface and iface == _default_route_iface():
-        return (f"{iface} carries the default route (the Pi's uplink); refusing "
-                "to avoid self-lockout")
-    ssh_if = _ssh_iface()
-    if ssh_if and iface == ssh_if:
-        return (f"{iface} carries the active SSH connection; refusing to avoid "
-                "self-lockout")
-    return ""
+    own connectivity (default route or active SSH).
+
+    Delegates to the shared guard in core.state, passing this module's
+    (patchable) detectors so there is one implementation, not two."""
+    return _state.self_link_reason(iface, route_fn=_default_route_iface,
+                                   ssh_fn=_ssh_iface)
 
 
 # --- driver diagnostics (for `sentinel wifi-check`) ------------------------ #
@@ -502,6 +482,17 @@ class WifiScan(Module):
             self._skip(ctx, reason)
             return
 
+        # Reserve the monitor interface through the central registry so a
+        # concurrent run (or a CLI holding it) can't fight over the adapter.
+        # The reservation is released in the finally below, on finish AND error.
+        reg = get_interface_registry(cfg)
+        run_id = getattr(getattr(ctx.store, "run", None), "run_id", "") or "wifi_scan"
+        claimed, busy = reg.claim(iface, run_id, mode="monitor")
+        if not claimed:
+            ctx.log.warning("wifi_scan: %s", busy)
+            self._skip(ctx, busy)
+            return
+
         duration = max(1, int(getattr(cfg, "wifi_scan_seconds", 30) or 30))
         channel = (getattr(cfg, "wifi_scan_channel", "") or "").strip()
         outdir = self._make_outdir(cfg)
@@ -546,6 +537,7 @@ class WifiScan(Module):
         finally:
             if attempted:
                 self._restore_managed(ctx, iface)   # guaranteed restore
+            reg.release(iface, run_id)               # guaranteed release
             self._cleanup(outdir)                    # guaranteed temp cleanup
 
     # --- helpers ----------------------------------------------------------

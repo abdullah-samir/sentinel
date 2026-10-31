@@ -34,6 +34,7 @@ from core.context import RunContext
 from core.events import EventBus
 from core.hardware import build_hardware
 from core.schema import RunResult, make_run_id, utcnow_iso
+from core.state import get_interface_registry
 from core.store import Store
 from core.workflows import load_workflows
 from dashboard.auth import (
@@ -46,6 +47,7 @@ from dashboard.schedule import Scheduler
 from dashboard.state import RunState
 from dashboard import assets as assets_mod
 from dashboard import esp as esp_mod
+from dashboard import interfaces as interfaces_mod
 from dashboard import terminal as terminal_mod
 from dashboard import launcher, manage, settings as settings_mod
 from reporting import history, risk, report_engine
@@ -106,6 +108,14 @@ def create_app(core_config: Optional[Config] = None,
     settings_mod.apply_to(core_config, dash_config)   # stored runtime settings (env pins win)
     shared_lock = threading.RLock()                   # guards run-state AND schedules
     run_state = RunState(lock=shared_lock)
+    # Interface reservation registry — shares the existing lock. On start,
+    # release only reservations whose owning run/process is no longer alive
+    # (keyed off PID liveness), so a genuinely-running CLI/scheduler process
+    # still holding the adapter is left untouched.
+    iface_registry = get_interface_registry(core_config, lock=shared_lock)
+    _freed = iface_registry.reset_dead()
+    if _freed:
+        log.info("released stale interface reservations from dead runs: %s", _freed)
     limiter = RateLimiter()
     assets_cache: dict = {}            # signature-cached asset aggregation
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES)),
@@ -130,6 +140,7 @@ def create_app(core_config: Optional[Config] = None,
     app.state.run_state = run_state
     app.state.limiter = limiter
     app.state.dash_config = dash_config
+    app.state.iface_registry = iface_registry
 
     # Offline static assets (vendored xterm.js for the terminal, etc.).
     _static = Path(__file__).parent / "static"
@@ -532,6 +543,14 @@ def create_app(core_config: Optional[Config] = None,
                       can_run=("esp_monitor" in wfs) and not dash_config.readonly,
                       active=run_state.current())
 
+    # --- interfaces (read-only live panel) -------------------------------
+    @app.get("/interfaces")
+    def interfaces_page(request: Request):
+        if not current_user(request):
+            return login_redirect()
+        return render("interfaces.html", request, nav_active="interfaces",
+                      panel=interfaces_mod.interfaces_panel(core_config, iface_registry))
+
     # --- web terminal (RCE; off by default, trusted networks only) --------
     def _terminal_denied_reason() -> Optional[str]:
         if not dash_config.shell_enabled:
@@ -760,6 +779,13 @@ def create_app(core_config: Optional[Config] = None,
         if not current_user(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         return JSONResponse({"modules": module_rows()})
+
+    @app.get("/api/interfaces")
+    def api_interfaces(request: Request):
+        """Read-only live state for the interfaces panel's poll. Never mutates."""
+        if not current_user(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return JSONResponse(interfaces_mod.interfaces_panel(core_config, iface_registry))
 
     return app
 

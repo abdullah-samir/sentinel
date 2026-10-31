@@ -423,6 +423,60 @@ def test_explicit_env_pin_wins(tmp_path, monkeypatch):
     assert mod.detect_adapter(Config(root=tmp_path)) == "wlan7"
 
 
+# --- interface reservation registry integration ---------------------------
+def test_wifi_scan_claims_during_run_and_releases_after(tmp_path, monkeypatch):
+    """The monitor interface is reserved for the duration of the scan and freed
+    afterwards; the holder sees it as its own (not busy), others see it busy."""
+    from core.state import get_interface_registry
+    seen = {}
+
+    def airodump(self, ctx, iface, outdir, duration, channel):
+        reg = get_interface_registry(ctx.config)
+        seen["busy_to_others"] = reg.busy_reason(iface, "someone-else")
+        seen["busy_to_self"] = reg.busy_reason(iface, "t")   # make_ctx run_id == "t"
+        (outdir / "scan-01.csv").write_text(SAMPLE_CSV, encoding="utf-8")
+
+    wire(monkeypatch, iface="wlan1", airodump=airodump)
+    ctx = make_ctx(tmp_path, wifi_scan_seconds=2)
+    WifiScan().run(ctx)
+
+    assert seen["busy_to_others"] != "" and "monitor" in seen["busy_to_others"]
+    assert seen["busy_to_self"] == ""                        # owner is never "busy"
+    reg = get_interface_registry(ctx.config)
+    assert reg.busy_reason("wlan1", "anyone") == ""          # released after the run
+
+
+def test_wifi_scan_refuses_busy_interface(tmp_path, monkeypatch):
+    """If the adapter is already reserved by another live run, wifi_scan skips
+    without touching monitor mode and leaves the other reservation intact."""
+    from core.state import get_interface_registry
+    cmds = wire(monkeypatch, iface="wlan1", default_if="wlan0")
+    ctx = make_ctx(tmp_path)
+    reg = get_interface_registry(ctx.config)
+    reg.claim("wlan1", "other-run", "monitor")              # held by a live run
+
+    WifiScan().run(ctx)
+
+    assert not any("monitor" in c for c in cmds)            # never changed mode
+    skips = [f for f in ctx.store.findings() if f.type == "module_status"]
+    assert skips and "busy" in skips[0].detail
+    assert reg.busy_reason("wlan1", "t") != ""              # other reservation kept
+
+
+def test_wifi_scan_releases_interface_on_error(tmp_path, monkeypatch):
+    """A scan that raises mid-capture still releases its reservation."""
+    from core.state import get_interface_registry
+
+    def boom(self, ctx, iface, outdir, duration, channel):
+        raise RuntimeError("radio exploded")
+
+    wire(monkeypatch, iface="wlan1", airodump=boom)
+    ctx = make_ctx(tmp_path, wifi_scan_seconds=2)
+    WifiScan().run(ctx)                                      # must not propagate
+    reg = get_interface_registry(ctx.config)
+    assert reg.busy_reason("wlan1", "anyone") == ""         # freed despite the error
+
+
 # --- registration / workflow ----------------------------------------------
 def test_module_registered_and_workflow_references_it(tmp_path):
     mods = registry.discover(force=True)

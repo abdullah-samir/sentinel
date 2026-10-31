@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Interfaces{% endblock %}
+{% block content %}
+<h1>Network interfaces</h1>
+
+<div class="banner">
+  Read-only view of network interfaces and monitor-mode reservations. This page
+  <strong>never</strong> changes an interface — it reports the registry's cached
+  reservation state plus lightweight <span class="mono">/sys/class/net</span>
+  reads. A Wi-Fi scan claims its adapter here before use and releases it on
+  finish; the default-route / SSH interface is refused for monitor-mode work
+  (self-lockout guard).
+</div>
+
+<div class="panel">
+  <h2>Interfaces (<span id="if-count">{{ panel.count }}</span>)</h2>
+  <table>
+    <thead><tr>
+      <th>Interface</th><th>Type</th><th>Driver</th><th>Mode</th>
+      <th>Link</th><th>Reservation</th>
+    </tr></thead>
+    <tbody id="if-body">
+    {% for i in panel.interfaces %}
+      <tr>
+        <td class="mono">{{ i.iface }}
+          {% if i.default_route %}<span class="pill" style="background:#2a1d0e;color:#F5953E">uplink</span>{% endif %}
+          {% if i.ssh %}<span class="pill" style="background:#2a1d0e;color:#F5953E">ssh</span>{% endif %}
+        </td>
+        <td>{{ i.kind }}{% if i.wifi %} · Wi-Fi{% endif %}</td>
+        <td class="mono">{{ i.driver }}</td>
+        <td class="mono" style="{{ 'color:#2DD4BF;font-weight:700' if i.mode == 'monitor' }}">{{ i.mode }}</td>
+        <td class="mono muted">{{ i.operstate or '—' }}</td>
+        <td>
+          {% if i.busy %}
+            <span class="pill" style="background:#1d2a1e;color:#2DD4BF">busy</span>
+            <span class="mono muted">run {{ i.run_id }} (pid {{ i.pid }})</span>
+          {% else %}
+            <span class="pill" style="background:#1a2232;color:#8B98AB">free</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if not panel.interfaces %}
+    <div class="empty">No network interfaces found.</div>
+  {% endif %}
+  <p class="muted" style="font-size:12px;margin:12px 0 0">
+    Auto-refreshing every 5s · <span id="if-updated">live</span>
+  </p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var body = document.getElementById("if-body");
+  var countEl = document.getElementById("if-count");
+  var updatedEl = document.getElementById("if-updated");
+  if (!body) return;
+
+  function pill(text, bg, fg) {
+    var s = document.createElement("span");
+    s.className = "pill";
+    s.style.background = bg; s.style.color = fg;
+    s.textContent = text;
+    return s;
+  }
+  function td(cls) { var e = document.createElement("td"); if (cls) e.className = cls; return e; }
+
+  function renderRow(i) {
+    var tr = document.createElement("tr");
+
+    var name = td("mono");
+    name.appendChild(document.createTextNode(i.iface + " "));
+    if (i.default_route) name.appendChild(pill("uplink", "#2a1d0e", "#F5953E"));
+    if (i.ssh) { name.appendChild(document.createTextNode(" ")); name.appendChild(pill("ssh", "#2a1d0e", "#F5953E")); }
+    tr.appendChild(name);
+
+    var type = td();
+    type.textContent = i.kind + (i.wifi ? " · Wi-Fi" : "");
+    tr.appendChild(type);
+
+    var drv = td("mono"); drv.textContent = i.driver; tr.appendChild(drv);
+
+    var mode = td("mono");
+    mode.textContent = i.mode;
+    if (i.mode === "monitor") { mode.style.color = "#2DD4BF"; mode.style.fontWeight = "700"; }
+    tr.appendChild(mode);
+
+    var link = td("mono muted"); link.textContent = i.operstate || "—"; tr.appendChild(link);
+
+    var res = td();
+    if (i.busy) {
+      res.appendChild(pill("busy", "#1d2a1e", "#2DD4BF"));
+      var m = document.createElement("span");
+      m.className = "mono muted";
+      m.textContent = " run " + i.run_id + " (pid " + i.pid + ")";
+      res.appendChild(m);
+    } else {
+      res.appendChild(pill("free", "#1a2232", "#8B98AB"));
+    }
+    tr.appendChild(res);
+    return tr;
+  }
+
+  function refresh() {
+    fetch("/api/interfaces", { headers: { "Accept": "application/json" } })
+      .then(function (r) { if (!r.ok) throw new Error("status " + r.status); return r.json(); })
+      .then(function (data) {
+        var rows = (data && data.interfaces) || [];
+        var frag = document.createDocumentFragment();
+        rows.forEach(function (i) { frag.appendChild(renderRow(i)); });
+        body.innerHTML = "";
+        body.appendChild(frag);
+        if (countEl) countEl.textContent = rows.length;
+        if (updatedEl) updatedEl.textContent = "updated " + new Date().toLocaleTimeString();
+      })
+      .catch(function () { if (updatedEl) updatedEl.textContent = "live (refresh paused)"; });
+  }
+  setInterval(refresh, 5000);
+})();
+</script>
+{% endblock %}
