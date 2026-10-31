@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 from pathlib import Path
@@ -517,8 +518,34 @@ def create_app(core_config: Optional[Config] = None,
         return render("scan.html", request, nav_active="scan", workflows=wfs,
                       workflow=workflow, prefill=prefill, active=run_state.current(),
                       option_groups=launcher.workflow_option_groups(core_config, workflow),
-                      iface_choices=iface_choices,
+                      iface_choices=iface_choices, privileged=(os.geteuid() == 0),
+                      scan_estimate=_recon_estimate(core_config, prefill.get("target", "")),
                       discovery=_discovery_view())
+
+    def _recon_estimate(cfg, target: str) -> dict:
+        from plugins.red.recon_nmap import estimate_cost
+        try:
+            return estimate_cost(cfg, target or "")
+        except Exception:  # noqa: BLE001 — the estimate must never break the page
+            return {"category": "moderate", "drivers": [], "intrusive": False}
+
+    @app.post("/api/scan/estimate")
+    async def api_scan_estimate(request: Request):
+        """Live, honest scope estimate for the current options (categories +
+        drivers, never fake minutes). Read-only; routes through the same option
+        parsing as a launch so what you see is what will run."""
+        if not current_user(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        form = await _parse_form(request)
+        workflow = form.get("workflow", "")
+        if workflow not in load_workflows(core_config):
+            return JSONResponse({"error": "unknown workflow"}, status_code=404)
+        try:
+            options = launcher.parse_options(core_config, workflow, form)
+            cfg = launcher.config_from_options(core_config, options)
+        except ValueError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse(_recon_estimate(cfg, form.get("target", "")))
 
     # --- smart target discovery ------------------------------------------
     def _discovery_view() -> dict:

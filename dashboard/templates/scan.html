@@ -31,6 +31,75 @@
     <div class="muted" style="font-size:12px">{{ spec.help }} Busy or protected interfaces are shown but can't be selected.</div>
   </div>
 {% endmacro %}
+{% macro recon_control(spec) %}
+  {% set val = prefill.options.get(spec.key, spec.default) %}
+  {% set root_locked = spec.root and not privileged %}
+  <div style="margin-bottom:10px">
+    <label style="display:block;font-weight:600;font-size:13px">{{ spec.label }}
+      {% if spec.root %}<span class="muted">(requires root{{ ' — unavailable here' if root_locked }})</span>{% endif %}
+    </label>
+    {% if spec.kind == 'bool' %}
+      <label style="font-weight:400"><input type="checkbox" name="{{ spec.key }}" value="1" {{ 'checked' if val }} {{ 'disabled' if root_locked }}> enable</label>
+    {% elif spec.kind == 'int' %}
+      <input type="number" name="{{ spec.key }}" value="{{ val }}" min="{{ spec.min }}" max="{{ spec.max }}" step="1">
+    {% elif spec.key == 'nmap_scan_type' %}
+      {% for cval, clabel in spec.choices %}
+        {% set opt_root = cval in (spec.root_choices or []) %}
+        <label style="display:block;font-weight:400">
+          <input type="radio" name="nmap_scan_type" value="{{ cval }}" {{ 'checked' if cval|string == val|string }} {{ 'disabled' if opt_root and not privileged }}>
+          {{ clabel }}{% if opt_root and not privileged %} <span class="muted">(needs root)</span>{% endif %}
+        </label>
+      {% endfor %}
+    {% elif spec.kind == 'choice' %}
+      <select id="f_{{ spec.key }}" name="{{ spec.key }}" {{ 'disabled' if root_locked }} {% if spec.requires %}data-requires="{{ spec.requires }}"{% endif %}>
+        {% for cval, clabel in spec.choices %}
+          <option value="{{ cval }}" {{ 'selected' if cval|string == val|string }}>{{ clabel }}{% if cval in (spec.intrusive_choices or []) %} ⚠ intrusive{% endif %}</option>
+        {% endfor %}
+      </select>
+    {% else %}
+      <input type="text" name="{{ spec.key }}" value="{{ val }}" {% if spec.maxlen %}maxlength="{{ spec.maxlen }}"{% endif %}>
+    {% endif %}
+    <div class="muted" style="font-size:12px">{{ spec.help }} <em>· time impact: {{ spec.impact }}</em></div>
+  </div>
+{% endmacro %}
+{% macro recon_panel(specs) %}
+  <fieldset style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+    <legend class="muted" style="font-size:12px;padding:0 6px">Scan options (nmap)</legend>
+    {# one-click presets #}
+    {% for spec in specs if spec.group == 'Preset' %}
+      {% set pval = prefill.options.get('nmap_preset', spec.default) %}
+      <div style="margin-bottom:8px">
+        <div style="font-weight:600;font-size:13px;margin-bottom:4px">{{ spec.label }}</div>
+        {% for cval, clabel in spec.choices %}
+          <label style="display:inline-block;margin:0 12px 4px 0;font-weight:400">
+            <input type="radio" name="nmap_preset" value="{{ cval }}" {{ 'checked' if cval|string == pval|string }}> {{ clabel }}
+          </label>
+        {% endfor %}
+        <div class="muted" style="font-size:12px">{{ spec.help }}</div>
+      </div>
+    {% endfor %}
+
+    {# live, honest scope estimate (categories + drivers, never fake minutes) #}
+    <div id="scan-estimate" data-cat="{{ scan_estimate.category }}"
+         data-intrusive="{{ '1' if scan_estimate.intrusive else '0' }}"
+         class="banner {{ 'warn' if (scan_estimate.category in ('slow','very-slow')) or scan_estimate.intrusive }}"
+         style="margin:8px 0">
+      <strong>Estimated scope:</strong> <span id="est-cat">{{ scan_estimate.category }}</span><span id="est-drivers" class="muted">{% if scan_estimate.drivers %} · {{ scan_estimate.drivers|join(', ') }}{% endif %}</span><span id="est-intrusive">{% if scan_estimate.intrusive %} · <span style="color:var(--orange)">intrusive</span>{% endif %}</span>
+    </div>
+
+    <details style="margin-top:6px">
+      <summary style="cursor:pointer;font-weight:600;font-size:13px">Advanced options (every nmap setting)</summary>
+      {% for grp, gspecs in specs|groupby('group') %}
+        {% if grp != 'Preset' %}
+        <fieldset style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:10px 0">
+          <legend class="muted" style="font-size:12px;padding:0 6px">{{ grp }}</legend>
+          {% for spec in gspecs %}{{ recon_control(spec) }}{% endfor %}
+        </fieldset>
+        {% endif %}
+      {% endfor %}
+    </details>
+  </fieldset>
+{% endmacro %}
 {% block content %}
 <h1>Launch a scan</h1>
 
@@ -158,7 +227,7 @@
   <div class="banner warn">A scan is already running —
     <a href="/run/{{ active.run_id }}/live">watch it live</a>. A new scan is rejected until it finishes.</div>
   {% endif %}
-  <form method="post" action="/run/{{ workflow }}">
+  <form id="scan-form" method="post" action="/run/{{ workflow }}">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <div style="margin-bottom:14px">
       <label style="display:block;font-weight:600;font-size:13px">Target</label>
@@ -167,17 +236,74 @@
       <div class="muted" style="font-size:12px">Validated server-side. Offensive modules still require the lab-authorization gate.</div>
     </div>
     {% for mod, specs in option_groups %}
-    <fieldset style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
-      <legend class="muted" style="font-size:12px;padding:0 6px">{{ mod }}</legend>
-      {% for spec in specs %}
-        {% if spec.key == 'wifi_iface' and iface_choices is defined and iface_choices %}{{ iface_picker(spec) }}{% else %}{{ field(spec) }}{% endif %}
-      {% endfor %}
-    </fieldset>
+      {% if mod == 'red.recon_nmap' %}
+        {{ recon_panel(specs) }}
+      {% else %}
+      <fieldset style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+        <legend class="muted" style="font-size:12px;padding:0 6px">{{ mod }}</legend>
+        {% for spec in specs %}
+          {% if spec.key == 'wifi_iface' and iface_choices is defined and iface_choices %}{{ iface_picker(spec) }}{% else %}{{ field(spec) }}{% endif %}
+        {% endfor %}
+      </fieldset>
+      {% endif %}
     {% else %}
     <p class="muted">This workflow has no tunable options.</p>
     {% endfor %}
     <button class="btn primary" type="submit">Start scan</button>
   </form>
+
+  {% if 'red.recon_nmap' in (option_groups | map(attribute=0) | list) %}
+  <script>
+  (function () {
+    "use strict";
+    var form = document.getElementById("scan-form");
+    var box = document.getElementById("scan-estimate");
+    if (!form || !box) return;
+    var workflow = "{{ workflow }}";
+    var timer = null;
+
+    function syncIntensity() {
+      // --version-intensity applies only when -sV is on; grey it otherwise.
+      var ver = document.getElementById("f_nmap_version");
+      var inten = document.getElementById("f_nmap_version_intensity");
+      if (ver && inten) inten.disabled = (ver.value !== "on");
+    }
+    function applyEstimate(e) {
+      if (!e || e.error) return;
+      var cat = document.getElementById("est-cat");
+      var drv = document.getElementById("est-drivers");
+      var intr = document.getElementById("est-intrusive");
+      if (cat) cat.textContent = e.category || "—";
+      if (drv) drv.textContent = (e.drivers && e.drivers.length) ? (" · " + e.drivers.join(", ")) : "";
+      if (intr) intr.innerHTML = e.intrusive ? ' · <span style="color:var(--orange)">intrusive</span>' : "";
+      box.setAttribute("data-cat", e.category || "");
+      box.setAttribute("data-intrusive", e.intrusive ? "1" : "0");
+      var warn = (e.category === "slow" || e.category === "very-slow" || e.intrusive);
+      box.className = "banner" + (warn ? " warn" : "");
+    }
+    function refresh() {
+      var data = new URLSearchParams(new FormData(form));
+      data.set("workflow", workflow);
+      fetch("/api/scan/estimate", { method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: data })
+        .then(function (r) { return r.json(); }).then(applyEstimate).catch(function () {});
+    }
+    form.addEventListener("change", function () {
+      syncIntensity();
+      clearTimeout(timer); timer = setTimeout(refresh, 250);
+    });
+    form.addEventListener("submit", function (ev) {
+      var cat = box.getAttribute("data-cat");
+      var intr = box.getAttribute("data-intrusive") === "1";
+      if (cat === "slow" || cat === "very-slow" || intr) {
+        if (!confirm("This scan looks " + cat + (intr ? " and intrusive" : "") +
+                     ". Launch anyway?")) ev.preventDefault();
+      }
+    });
+    syncIntensity();
+  })();
+  </script>
+  {% endif %}
   {% endif %}
 </div>
 {% endblock %}

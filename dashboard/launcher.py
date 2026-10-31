@@ -19,23 +19,84 @@ from dashboard.manage import safe_path, valid_run_id
 # Config attribute (except "mode" -> nmap_fast). kind: bool|int|choice|text.
 OPTION_GROUPS = {
     "red.recon_nmap": [
+        {"key": "nmap_preset", "label": "Preset", "kind": "choice", "default": "",
+         "group": "Preset", "impact": "varies",
+         "choices": [("", "Custom (use the fields below)"), ("quick", "Quick"),
+                     ("standard", "Standard"), ("thorough", "Thorough"),
+                     ("deep", "Deep — all ports")],
+         "help": "One-click profile. Advanced options below override it per field."},
         {"key": "mode", "label": "Scan depth", "kind": "choice", "default": "auto",
+         "group": "Depth",
          "choices": [("auto", "Auto (fast for /24+, full for one host)"),
                      ("fast", "Fast (top-100, no version)"),
                      ("full", "Full (top-1000 + service versions)")],
-         "help": "Fast skips version detection; full is slower but detailed."},
+         "help": "Fast skips version detection; full is slower but detailed.",
+         "impact": "fast → slower"},
+        # --- host discovery ---
+        {"key": "nmap_ping_only", "label": "Ping sweep only (-sn)", "kind": "bool",
+         "default": False, "group": "Host discovery", "impact": "fast",
+         "help": "Only find live hosts; skip the port scan entirely."},
         {"key": "nmap_pn", "label": "Skip host discovery (-Pn)", "kind": "bool",
-         "default": False, "help": "Treat every address as up — much slower on a large CIDR."},
-        {"key": "nmap_timeout", "label": "Per-host timeout (s)", "kind": "int",
-         "default": 300, "min": 0, "max": 3600, "help": "nmap --host-timeout; 0 disables."},
+         "default": False, "group": "Host discovery", "impact": "much slower on a subnet",
+         "help": "Treat every address as up — much slower on a large CIDR."},
+        # --- port selection ---
         {"key": "nmap_top_ports", "label": "Top ports", "kind": "int",
-         "default": 0, "min": 0, "max": 65535, "help": "0 = mode default (100 fast / 1000 full)."},
+         "default": 0, "min": 0, "max": 65535, "group": "Ports",
+         "impact": "more ports → slower",
+         "help": "0 = preset default (100 quick / 1000 standard). Else scan the N most common."},
+        {"key": "nmap_all_ports", "label": "All 65535 ports (-p-)", "kind": "bool",
+         "default": False, "group": "Ports", "impact": "very slow", "slow": True,
+         "help": "Scan every TCP port. Very slow — use on one host, not a subnet."},
+        {"key": "nmap_port_spec", "label": "Custom ports (-p)", "kind": "text",
+         "default": "", "maxlen": 200, "pattern": r"^[0-9,\-TUP:]*$", "group": "Ports",
+         "impact": "varies",
+         "help": "e.g. 22,80,443,8000-8100 — overrides top-ports when set."},
+        # --- scan technique (single choice) ---
+        {"key": "nmap_scan_type", "label": "Technique", "kind": "choice", "default": "",
+         "group": "Scan technique", "impact": "UDP is very slow",
+         "choices": [("", "Auto (SYN if root, else TCP connect)"),
+                     ("connect", "TCP connect (-sT)"),
+                     ("syn", "SYN stealth (-sS) — root"),
+                     ("udp", "UDP (-sU) — root, very slow"),
+                     ("ack", "ACK / firewall map (-sA) — root")],
+         "root_choices": ["syn", "udp", "ack"],
+         "help": "One technique at a time. SYN/UDP/ACK need raw sockets (root)."},
+        {"key": "nmap_privileged", "label": "Privileged mode (-sS/-O)", "kind": "bool",
+         "default": False, "group": "Scan technique", "root": True, "impact": "—",
+         "help": "Enable SYN + OS detection; only effective when the scanner runs as root."},
+        # --- version detection ---
+        {"key": "nmap_version", "label": "Service/version detection (-sV)", "kind": "choice",
+         "default": "", "group": "Version detection", "impact": "slower",
+         "choices": [("", "Preset default"), ("on", "On (-sV)"), ("off", "Off")],
+         "help": "Probe open ports for the exact product/version."},
+        {"key": "nmap_version_intensity", "label": "Version intensity (0–9)", "kind": "choice",
+         "default": "", "group": "Version detection", "impact": "higher → slower",
+         "requires": "nmap_version=on",
+         "choices": [("", "Default")] + [(str(i), str(i)) for i in range(10)],
+         "help": "Only applied when -sV is on; higher is more thorough and slower."},
+        # --- OS detection ---
+        {"key": "nmap_os", "label": "OS detection (-O)", "kind": "choice", "default": "",
+         "group": "OS detection", "root": True, "impact": "slower",
+         "choices": [("", "Preset default"), ("on", "On (-O) — root"), ("off", "Off")],
+         "help": "Fingerprint the operating system. Needs root (raw packets)."},
+        # --- NSE scripts ---
+        {"key": "nmap_scripts", "label": "NSE scripts", "kind": "choice", "default": "",
+         "group": "NSE scripts", "impact": "slower (vuln = slow/intrusive)",
+         "choices": [("", "None"), ("default", "Default (-sC)"),
+                     ("default,safe", "Default + safe"),
+                     ("default,safe,discovery", "Default + safe + discovery"),
+                     ("vuln", "Vulnerability scripts — intrusive")],
+         "intrusive_choices": ["vuln"],
+         "help": "Nmap Scripting Engine. Vuln/intrusive scripts are slower and actively probe."},
+        # --- timing ---
         {"key": "nmap_timing", "label": "Timing", "kind": "choice", "default": "4",
-         "choices": [("1", "T1 — slow / stealthy"), ("2", "T2"), ("3", "T3 — normal"),
-                     ("4", "T4 — aggressive"), ("5", "T5 — fastest")],
-         "help": "nmap -T template."},
-        {"key": "nmap_privileged", "label": "Privileged (-sS/-O)", "kind": "bool",
-         "default": False, "help": "SYN + OS detection; only effective when running as root."},
+         "group": "Timing", "impact": "T0 slow → T5 fastest",
+         "choices": [("0", "T0 — paranoid"), ("1", "T1 — sneaky"), ("2", "T2 — polite"),
+                     ("3", "T3 — normal"), ("4", "T4 — aggressive"), ("5", "T5 — insane")],
+         "help": "nmap -T template (0 slowest/stealthiest, 5 fastest)."},
+        {"key": "nmap_timeout", "label": "Per-host timeout (s)", "kind": "int",
+         "default": 300, "min": 0, "max": 3600, "group": "Timing", "impact": "—",
+         "help": "nmap --host-timeout; 0 disables (a host can then run unbounded)."},
     ],
     "red.wifi_scan": [
         {"key": "wifi_scan_seconds", "label": "Duration (s)", "kind": "int",
@@ -60,9 +121,12 @@ OPTION_GROUPS = {
     ],
 }
 
-# Config attributes that may be set from options (besides the mode->nmap_fast map).
+# Config attributes copied straight from options (besides mode->nmap_fast and the
+# tristate/intensity transforms handled in config_from_options).
 _CONFIG_KEYS = ("nmap_pn", "nmap_timeout", "nmap_top_ports", "nmap_timing",
-                "nmap_privileged", "capture_seconds", "capture_iface",
+                "nmap_privileged", "nmap_preset", "nmap_scan_type", "nmap_ping_only",
+                "nmap_all_ports", "nmap_port_spec", "nmap_scripts",
+                "capture_seconds", "capture_iface",
                 "capture_filter", "capture_max_packets",
                 "wifi_scan_seconds", "wifi_scan_channel", "wifi_iface")
 
@@ -149,6 +213,15 @@ def config_from_options(core_config, options: dict):
     overrides = {}
     if "mode" in options:
         overrides["nmap_fast"] = {"auto": None, "fast": True, "full": False}.get(options["mode"])
+    # tristate choices "" / "on" / "off" -> None / True / False
+    _tri = {"": None, "on": True, "off": False}
+    for k in ("nmap_version", "nmap_os"):
+        if k in options:
+            overrides[k] = _tri.get(options[k], None)
+    # version intensity "" -> None, else int
+    if "nmap_version_intensity" in options:
+        v = options["nmap_version_intensity"]
+        overrides["nmap_version_intensity"] = int(v) if str(v).strip() != "" else None
     for k in _CONFIG_KEYS:
         if k in options:
             overrides[k] = options[k]
