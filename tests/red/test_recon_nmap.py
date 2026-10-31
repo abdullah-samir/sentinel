@@ -14,7 +14,7 @@ from core.log import get_logger
 from core.schema import RunResult, utcnow_iso
 from core.store import Store
 from plugins.red import recon_nmap as recon_mod
-from plugins.red.recon_nmap import ReconNmap
+from plugins.red.recon_nmap import ReconNmap, estimate_cost
 
 
 # --- fakes mimicking the python-nmap surface the module touches -----------
@@ -492,3 +492,117 @@ def test_default_discovery_keeps_up_host_without_open_ports(tmp_path, monkeypatc
     assets = ctx.store.assets()
     assert [a.ip for a in assets] == ["10.0.0.2"]     # kept under default discovery
     assert assets[0].alive is True and assets[0].open_ports == []
+
+
+# --- Phase 1 Commit 2: full option set (args per group), validation, estimator -
+def test_technique_connect_and_udp_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    a, _ = ReconNmap()._build_args(
+        make_ctx(tmp_path, nmap_privileged=True, nmap_scan_type="udp"), "10.0.0.5")
+    assert "-sU" in a
+    b, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_scan_type="connect"), "10.0.0.5")
+    assert "-sT" in b
+
+
+def test_root_only_technique_rejected_when_unprivileged(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    with pytest.raises(ValueError):
+        ReconNmap()._build_args(make_ctx(tmp_path, nmap_scan_type="syn"), "10.0.0.5")
+
+
+def test_dual_technique_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    with pytest.raises(ValueError):
+        ReconNmap()._build_args(
+            make_ctx(tmp_path, nmap_privileged=True, nmap_scan_type="syn,udp"), "10.0.0.5")
+
+
+def test_os_detection_requires_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "geteuid", lambda: 1000)
+    with pytest.raises(ValueError):
+        ReconNmap()._build_args(make_ctx(tmp_path, nmap_os=True), "10.0.0.5")
+
+
+def test_port_selection_all_and_custom(tmp_path):
+    a1, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_all_ports=True), "10.0.0.5")
+    assert "-p-" in a1 and "--top-ports" not in a1
+    a2, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_port_spec="22,80,443"), "10.0.0.5")
+    assert "-p 22,80,443" in a2
+
+
+def test_version_intensity_only_when_sv_on(tmp_path):
+    on, _ = ReconNmap()._build_args(
+        make_ctx(tmp_path, nmap_fast=False, nmap_version_intensity=7), "10.0.0.5")
+    assert "-sV" in on and "--version-intensity 7" in on
+    # intensity set but -sV off -> silently omitted, NOT an error
+    off, _ = ReconNmap()._build_args(
+        make_ctx(tmp_path, nmap_version=False, nmap_version_intensity=7), "10.0.0.5")
+    assert "--version-intensity" not in off and "-sV" not in off
+
+
+def test_nse_default_and_categories(tmp_path):
+    a1, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_scripts="default"), "10.0.0.5")
+    assert "-sC" in a1
+    a2, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_scripts="safe,discovery"), "10.0.0.5")
+    assert "--script=safe,discovery" in a2
+
+
+def test_ping_only_skips_port_scan(tmp_path):
+    a, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_ping_only=True), "10.0.0.0/24")
+    assert "-sn" in a and "--top-ports" not in a and "-sV" not in a
+
+
+def test_timing_group(tmp_path):
+    a, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_timing="2"), "10.0.0.5")
+    assert "-T2" in a
+
+
+def test_presets_expand(tmp_path, monkeypatch):
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    q, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_preset="quick"), "10.0.0.5")
+    assert "--top-ports 100" in q and "-sV" not in q
+    s, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_preset="standard"), "10.0.0.5")
+    assert "-sV" in s and "-sC" in s and "--top-ports 1000" in s
+    t, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_preset="thorough"), "10.0.0.5")
+    assert "--version-intensity 7" in t and "--script=default,safe,discovery" in t
+    d, _ = ReconNmap()._build_args(make_ctx(tmp_path, nmap_preset="deep"), "10.0.0.5")
+    assert "-p-" in d
+
+
+def test_existing_fast_full_modes_still_work(tmp_path):
+    f, fast = ReconNmap()._build_args(make_ctx(tmp_path, nmap_fast=True), "10.0.0.0/24")
+    assert fast is True and "--top-ports 100" in f and "-sV" not in f
+    g, full = ReconNmap()._build_args(make_ctx(tmp_path, nmap_fast=False), "10.0.0.5")
+    assert full is False and "-sV" in g and "--top-ports 1000" in g
+
+
+def test_estimator_flags_cost_drivers(tmp_path):
+    e = estimate_cost(make_ctx(tmp_path, nmap_all_ports=True).config, "10.0.0.5")
+    assert e["category"] == "very-slow" and "all 65535 ports" in e["drivers"]
+    e2 = estimate_cost(make_ctx(tmp_path, nmap_scan_type="udp").config, "10.0.0.5")
+    assert e2["category"] == "very-slow" and "UDP scan" in e2["drivers"]
+    e3 = estimate_cost(make_ctx(tmp_path, nmap_scripts="vuln").config, "10.0.0.5")
+    assert e3["intrusive"] is True and e3["category"] in ("slow", "very-slow")
+    e4 = estimate_cost(make_ctx(tmp_path, nmap_fast=True).config, "10.0.0.5")
+    assert e4["category"] == "fast" and e4["drivers"] == []
+    e5 = estimate_cost(make_ctx(tmp_path).config, "10.0.0.0/24")
+    assert "large subnet" in e5["drivers"]
+
+
+def test_estimator_is_honest_categories_not_minutes(tmp_path):
+    e = estimate_cost(make_ctx(tmp_path).config, "10.0.0.5")
+    assert e["category"] in ("fast", "moderate", "slow", "very-slow")
+    assert isinstance(e["drivers"], list) and isinstance(e["intrusive"], bool)
+
+
+def test_full_audit_default_is_not_deep(tmp_path):
+    a, _ = ReconNmap()._build_args(make_ctx(tmp_path), "10.0.0.5")   # default config
+    assert "-p-" not in a
+    assert estimate_cost(make_ctx(tmp_path).config, "10.0.0.5")["category"] != "very-slow"
+
+
+def test_defensive_parse_missing_port_fields(tmp_path, monkeypatch):
+    tcp = {80: {"state": "open"}}                     # no name/product/version
+    up = FakeHost(state="up", protocols={"tcp": tcp}, addresses={"ipv4": "10.0.0.8"})
+    a = _only_asset(tmp_path, monkeypatch, {"10.0.0.8": up})
+    assert a.open_ports == [80] and a.ports[0]["service"] == ""   # tolerated, no crash

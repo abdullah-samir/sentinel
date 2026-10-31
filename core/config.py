@@ -36,6 +36,18 @@ class Config:
     nmap_timeout: int = 300             # nmap --host-timeout seconds (0 disables)
     nmap_timing: str = "4"              # nmap -T<timing> (0-5); 4 = aggressive
     nmap_pn: bool = False               # -Pn: skip host discovery (slow on big CIDRs)
+    # --- full nmap option set (extends the above; presets map fast/full onto
+    # these). All default-inert: empty/None means "use the fast/full default",
+    # so an unconfigured recon behaves exactly as before. ---
+    nmap_preset: str = ""               # "" | quick | standard | thorough | deep | custom
+    nmap_scan_type: str = ""            # "" auto(-sS if root else -sT); syn|connect|udp|ack
+    nmap_ping_only: bool = False        # -sn: host discovery only (no port scan)
+    nmap_all_ports: bool = False        # -p- : all 65535 ports (very slow)
+    nmap_port_spec: str = ""            # custom -p spec, e.g. "22,80,443,8000-8100"
+    nmap_version: Optional[bool] = None       # -sV on/off; None = fast/full default
+    nmap_version_intensity: Optional[int] = None  # 0-9; only sent when -sV is on
+    nmap_os: Optional[bool] = None            # -O on/off (root-gated); None = default
+    nmap_scripts: str = ""              # "" none | "default" | comma categories (safe,vuln,…)
 
     # --- Wi-Fi scan tuning (red.wifi_scan reads these) --------------------
     # wifi_iface (above) "" / a non-present name -> auto-detect the RTL8188EUS

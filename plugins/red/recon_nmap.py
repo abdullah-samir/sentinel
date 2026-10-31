@@ -33,8 +33,9 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 from shutil import which
-from typing import Tuple
+from typing import List, Optional, Tuple
 
 from core.module import Module, Manifest
 from core.registry import register
@@ -203,6 +204,177 @@ def _extract_tls_http(scripts: dict):
     return tls, http
 
 
+# --------------------------------------------------------------------------- #
+# full option set: presets, safe arg building, validation, honest estimator
+# --------------------------------------------------------------------------- #
+# Presets seed an option set; the existing fast/full modes map onto quick/standard.
+# A preset is a starting point — explicit per-field options still override it.
+PRESETS = {
+    "quick":    {"fast": True,  "version": False, "os": False, "scripts": "",
+                 "ports": ("top", FAST_TOP_PORTS), "intensity": None},
+    "standard": {"fast": False, "version": True,  "os": None,  "scripts": "default",
+                 "ports": ("top", FULL_TOP_PORTS), "intensity": None},
+    "thorough": {"fast": False, "version": True,  "os": None,  "scripts": "default,safe,discovery",
+                 "ports": ("top", FULL_TOP_PORTS), "intensity": 7},
+    "deep":     {"fast": False, "version": True,  "os": None,  "scripts": "default,safe,discovery",
+                 "ports": ("all", None), "intensity": None},
+}
+
+_TECHNIQUE_FLAG = {"syn": "-sS", "connect": "-sT", "udp": "-sU", "ack": "-sA"}
+_ROOT_TECHNIQUES = {"syn", "udp", "ack"}       # raw-socket techniques: need root
+_INTRUSIVE_CATEGORIES = {"vuln", "intrusive", "exploit", "brute", "dos"}
+
+
+def _validate_plan(scan_types: List[str], privileged: bool, explicit_os: bool) -> None:
+    """Reject genuinely-incompatible combos with a clear reason (never silently)."""
+    picked = [s for s in scan_types if s]
+    if len(picked) > 1:
+        raise ValueError("choose a single scan technique (got: %s)" % ", ".join(picked))
+    st = picked[0] if picked else ""
+    if st and st not in _TECHNIQUE_FLAG:
+        raise ValueError(f"unknown scan technique: {st!r}")
+    if st in _ROOT_TECHNIQUES and not privileged:
+        raise ValueError(f"the {st} scan technique ({_TECHNIQUE_FLAG[st]}) requires "
+                         "root/privileged mode")
+    if explicit_os and not privileged:
+        raise ValueError("OS detection (-O) requires root/privileged mode")
+
+
+def _resolve_plan(config, target: str, privileged: bool) -> dict:
+    """Merge the preset (or fast/full default) with explicit per-field options
+    into one normalized plan. Raises ValueError on an incompatible combo."""
+    preset = (getattr(config, "nmap_preset", "") or "").strip().lower()
+    if preset in PRESETS:
+        base = dict(PRESETS[preset])
+        fast = base["fast"]
+    else:
+        fast = config.nmap_fast if config.nmap_fast is not None else _is_large_target(target)
+        base = {"fast": fast, "version": (not fast), "os": (None if not fast else False),
+                "scripts": "", "ports": ("top", FAST_TOP_PORTS if fast else FULL_TOP_PORTS),
+                "intensity": None}
+
+    raw_st = (getattr(config, "nmap_scan_type", "") or "").strip().lower()
+    scan_types = [s for s in re.split(r"[,\s]+", raw_st) if s]
+    explicit_os = config.nmap_os is True
+    _validate_plan(scan_types, privileged, explicit_os)
+    technique = _TECHNIQUE_FLAG.get(scan_types[0] if scan_types else "",
+                                    "-sS" if privileged else "-sT")
+
+    if getattr(config, "nmap_all_ports", False):
+        ports = ("all", None)
+    elif (getattr(config, "nmap_port_spec", "") or "").strip():
+        ports = ("custom", config.nmap_port_spec.strip())
+    elif config.nmap_top_ports and config.nmap_top_ports > 0:
+        ports = ("top", config.nmap_top_ports)
+    else:
+        ports = base["ports"]
+
+    version = bool(config.nmap_version) if config.nmap_version is not None else bool(base["version"])
+    intensity = config.nmap_version_intensity
+    if intensity is None:
+        intensity = base.get("intensity")
+
+    if config.nmap_os is not None:
+        os_on = bool(config.nmap_os) and privileged
+    else:
+        base_os = base["os"]
+        os_on = privileged if base_os is None else (bool(base_os) and privileged)
+
+    scripts = (getattr(config, "nmap_scripts", "") or "").strip() or base.get("scripts", "")
+
+    return {"fast": fast, "technique": technique,
+            "ping_only": bool(getattr(config, "nmap_ping_only", False)),
+            "pn": bool(config.nmap_pn), "ports": ports, "version": version,
+            "intensity": intensity, "os": os_on, "scripts": scripts,
+            "timing": config.nmap_timing or "4", "timeout": config.nmap_timeout}
+
+
+def _args_from_plan(plan: dict) -> List[str]:
+    """Build the nmap argument list from a resolved plan (list, never shell=True)."""
+    timing = f"-T{plan['timing']}"
+    timeout = []
+    if plan["timeout"] and plan["timeout"] > 0:
+        timeout = [f"--host-timeout {plan['timeout']}s"]
+
+    if plan["ping_only"]:
+        # -sn: host discovery only; nmap ignores ports/version/os/scripts here.
+        parts = ["-sn"]
+        if plan["pn"]:
+            parts.append("-Pn")
+        return parts + [timing] + timeout
+
+    parts = [plan["technique"]]
+    if plan["pn"]:
+        parts.append("-Pn")
+    kind, val = plan["ports"]
+    if kind == "all":
+        parts.append("-p-")
+    elif kind == "custom":
+        parts.append(f"-p {val}")
+    else:
+        parts.append(f"--top-ports {val}")
+    if plan["version"]:
+        parts.append("-sV")
+        inten = plan["intensity"]
+        if inten is not None:
+            try:
+                n = int(inten)
+                if 0 <= n <= 9:
+                    parts.append(f"--version-intensity {n}")
+            except (TypeError, ValueError):
+                pass
+    # --version-intensity without -sV is silently omitted (handled above), not an error.
+    if plan["os"]:
+        parts.append("-O")
+    cats = [c.strip() for c in (plan["scripts"] or "").split(",") if c.strip()]
+    if cats == ["default"]:
+        parts.append("-sC")
+    elif cats:
+        parts.append(f"--script={','.join(cats)}")
+    parts.append(timing)
+    return parts + timeout
+
+
+def estimate_cost(config, target: str = "") -> dict:
+    """Honest relative cost: a category (fast|moderate|slow|very-slow) + the named
+    cost drivers present + an intrusiveness flag. No false-precision minutes — all
+    options stay selectable; this only informs."""
+    drivers: List[str] = []
+    intrusive = False
+    preset = (getattr(config, "nmap_preset", "") or "").strip().lower()
+    st = (getattr(config, "nmap_scan_type", "") or "").lower()
+    scripts = (getattr(config, "nmap_scripts", "") or "").lower()
+    all_ports = bool(getattr(config, "nmap_all_ports", False)) or preset == "deep"
+    large = _is_large_target(target)
+
+    very = slow = False
+    if "udp" in st:
+        drivers.append("UDP scan"); very = True
+    if all_ports:
+        drivers.append("all 65535 ports"); very = True
+    if any(c in scripts for c in _INTRUSIVE_CATEGORIES):
+        drivers.append("vuln/intrusive NSE scripts"); intrusive = True; slow = True
+    if large:
+        drivers.append("large subnet"); slow = True
+    inten = getattr(config, "nmap_version_intensity", None)
+    try:
+        if inten is not None and int(inten) >= 7:
+            drivers.append("high version-detection intensity"); slow = True
+    except (TypeError, ValueError):
+        pass
+    if getattr(config, "nmap_pn", False) and large:
+        drivers.append("-Pn over a large subnet"); slow = True
+
+    if very:
+        category = "very-slow"
+    elif slow:
+        category = "slow"
+    else:
+        fast = config.nmap_fast if config.nmap_fast is not None else large
+        category = "fast" if (preset == "quick" or fast) else "moderate"
+    return {"category": category, "drivers": drivers, "intrusive": intrusive}
+
+
 @register
 class ReconNmap(Module):
     manifest = Manifest(
@@ -223,6 +395,14 @@ class ReconNmap(Module):
             import nmap  # noqa: F401  (python-nmap; lazy so discovery never fails)
         except Exception as e:  # noqa: BLE001
             return (False, f"python-nmap not importable: {e}")
+        # Audit guard: reject an incompatible option combo up front with a clear
+        # reason, so the orchestrator records a clean skip rather than erroring.
+        if ctx is not None and getattr(ctx, "config", None) is not None:
+            try:
+                _resolve_plan(ctx.config, getattr(ctx, "target", "") or "",
+                              self._privileged(ctx))
+            except ValueError as e:
+                return (False, str(e))
         return (True, "")
 
     # --- scan planning ----------------------------------------------------
@@ -244,27 +424,13 @@ class ReconNmap(Module):
         return True
 
     def _build_args(self, ctx, target: str) -> Tuple[str, bool]:
-        """Return (nmap argument string, fast?). Fast skips -sV and -O; full
-        keeps the original -sV (+ -O when privileged)."""
-        cfg = ctx.config
-        fast = self._effective_fast(ctx, target)
+        """Return (nmap argument string, fast?). Delegates to the unified plan
+        resolver so presets + the full option set all flow through one path;
+        with everything at its defaults this reproduces the fast/full args
+        exactly. Raises ValueError on an incompatible combo."""
         privileged = self._privileged(ctx)
-
-        top = cfg.nmap_top_ports if cfg.nmap_top_ports and cfg.nmap_top_ports > 0 \
-            else (FAST_TOP_PORTS if fast else FULL_TOP_PORTS)
-
-        parts = ["-sS" if privileged else "-sT"]
-        if cfg.nmap_pn:
-            parts.append("-Pn")                  # skip host discovery; all hosts "up"
-        if not fast:
-            parts.append("-sV")                  # version detection: full only
-            if privileged:
-                parts.append("-O")               # OS detection: full + privileged
-        parts.append(f"-T{cfg.nmap_timing or '4'}")
-        parts.append(f"--top-ports {top}")
-        if cfg.nmap_timeout and cfg.nmap_timeout > 0:
-            parts.append(f"--host-timeout {cfg.nmap_timeout}s")
-        return " ".join(parts), fast
+        plan = _resolve_plan(ctx.config, target, privileged)
+        return " ".join(_args_from_plan(plan)), plan["fast"]
 
     # --- run --------------------------------------------------------------
     def run(self, ctx) -> None:
@@ -280,7 +446,15 @@ class ReconNmap(Module):
             )
             return
 
-        arguments, fast = self._build_args(ctx, target)
+        try:
+            arguments, fast = self._build_args(ctx, target)
+        except ValueError as e:
+            ctx.log.warning("recon: invalid scan options: %s", e)
+            ctx.store.add_finding(
+                module=self.manifest.name, type="module_status", severity=Severity.INFO,
+                target=target, title="Nmap recon skipped (invalid options)",
+                detail=str(e), tags=["recon", "skipped"])
+            return
         ctx.log.info("recon: scanning %s (%s mode) — nmap %s",
                      target, "fast" if fast else "full", arguments)
         if ctx.config.nmap_pn:
