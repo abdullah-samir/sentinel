@@ -20,8 +20,11 @@ def make_env(tmp_path):
     cfg.results_dir.mkdir(parents=True, exist_ok=True)
     wf = tmp_path / "workflows"
     wf.mkdir(parents=True, exist_ok=True)
-    (wf / "workflows.yaml").write_text("quick_recon: { steps: [red.recon_nmap] }\n",
-                                       encoding="utf-8")
+    (wf / "workflows.yaml").write_text(
+        "quick_recon: { steps: [red.recon_nmap] }\n"
+        "wifi_scan: { steps: [red.wifi_scan] }\n"
+        "full_audit: { steps: [red.recon_nmap, blue.capture_tshark] }\n",
+        encoding="utf-8")
     dc = DashConfig(user="admin", password_hash=hash_password(PW), secret=SECRET,
                     readonly=False, path=tmp_path / "data" / "dashboard.json")
     return cfg, dc, create_app(cfg, dc)
@@ -62,7 +65,7 @@ def test_options_ui_has_descriptions_and_time_impact(tmp_path):
 def test_technique_is_single_select_radios_with_root_flags(tmp_path):
     body = _page(tmp_path)
     # single-select: radio buttons sharing the name (not checkboxes)
-    assert re.search(r'type="radio"\s+name="nmap_scan_type"', body)
+    assert re.search(r'<input type="radio"[^>]*name="nmap_scan_type"', body)
     # root-only techniques flagged + disabled when the dashboard isn't root
     assert "needs root" in body
     assert re.search(r'name="nmap_scan_type"[^>]*value="syn"[^>]*disabled', body) \
@@ -113,3 +116,47 @@ def test_estimate_endpoint_requires_auth(tmp_path):
     r = TestClient(app).post("/api/scan/estimate",
                              data={"workflow": "quick_recon"})
     assert r.status_code == 401
+
+
+# --- Priority 1 widgets: render + real submitting fields preserved -----------
+def _wifi_page(tmp_path):
+    _, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    login_csrf(c)
+    return c.get("/scan?workflow=wifi_scan").text
+
+
+def test_workflow_selector_is_cards(tmp_path):
+    body = _page(tmp_path)
+    assert 'class="wf-card' in body                       # cards replace the <select>
+    assert 'href="/scan?workflow=wifi_scan"' in body      # each workflow is selectable
+    assert re.search(r'class="wf-card sel"[^>]*href="/scan\?workflow=quick_recon"', body)  # selected
+
+
+def test_presets_are_segmented_chips_backed_by_radios(tmp_path):
+    body = _page(tmp_path)
+    assert 'class="seg"' in body
+    assert 'name="nmap_preset"' in body and 'value="deep"' in body   # real field preserved
+
+
+def test_duration_chips_back_a_real_numeric_field(tmp_path):
+    body = _wifi_page(tmp_path)
+    assert 'data-dur-for="f_wifi_scan_seconds"' in body and 'data-dur="30"' in body
+    assert re.search(r'<input[^>]*id="f_wifi_scan_seconds"[^>]*name="wifi_scan_seconds"', body)
+
+
+def test_channel_menu_backs_a_real_text_field(tmp_path):
+    body = _wifi_page(tmp_path)
+    assert 'data-chan-for="f_wifi_scan_channel"' in body and 'data-chan="6"' in body
+    assert 'name="wifi_scan_channel"' in body
+
+
+def test_custom_dropdown_overlays_a_real_select(tmp_path):
+    body = _page(tmp_path)
+    assert 'class="enh-select"' in body        # the real <select> stays the form field
+    assert 'enh-trigger' in body               # the enhancer builds a custom trigger
+
+
+def test_summary_confirm_modal_present(tmp_path):
+    body = _page(tmp_path)
+    assert 'id="scan-modal"' in body and "Review scan" in body and "Confirm" in body

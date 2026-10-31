@@ -6,10 +6,27 @@
     <label for="f_{{ spec.key }}" style="display:block;font-weight:600;font-size:13px">{{ spec.label }}</label>
     {% if spec.kind == 'bool' %}
       <label style="font-weight:400"><input type="checkbox" id="f_{{ spec.key }}" name="{{ spec.key }}" value="1" {{ 'checked' if val }}> enable</label>
+    {% elif spec.key in ('wifi_scan_seconds', 'capture_seconds') %}
+      {# duration: preset chips set the numeric input; custom input overrides #}
+      <div class="chips" data-dur-for="f_{{ spec.key }}" style="margin-bottom:6px">
+        {% for d in [15, 30, 60, 120, 300] %}
+        <button type="button" class="chip-btn {{ 'sel' if d|string == val|string }}" data-dur="{{ d }}">{{ d }}s</button>
+        {% endfor %}
+      </div>
+      <input id="f_{{ spec.key }}" type="number" name="{{ spec.key }}" value="{{ val }}" min="{{ spec.min }}" max="{{ spec.max }}" step="1" style="width:120px">
     {% elif spec.kind == 'int' %}
       <input id="f_{{ spec.key }}" type="number" name="{{ spec.key }}" value="{{ val }}" min="{{ spec.min }}" max="{{ spec.max }}" step="1">
+    {% elif spec.key == 'wifi_scan_channel' %}
+      {# channel menu: chips set the text field (blank = channel-hop) #}
+      <div class="chips" data-chan-for="f_{{ spec.key }}" style="margin-bottom:6px">
+        <button type="button" class="chip-btn {{ 'sel' if not val }}" data-chan="">hop</button>
+        {% for ch in [1, 6, 11, 36, 40, 44, 48, 149, 153, 157, 161] %}
+        <button type="button" class="chip-btn {{ 'sel' if ch|string == val|string }}" data-chan="{{ ch }}">{{ ch }}</button>
+        {% endfor %}
+      </div>
+      <input id="f_{{ spec.key }}" type="text" name="{{ spec.key }}" value="{{ val }}" {% if spec.maxlen %}maxlength="{{ spec.maxlen }}"{% endif %} placeholder="blank = channel-hop" style="width:160px">
     {% elif spec.kind == 'choice' %}
-      <select id="f_{{ spec.key }}" name="{{ spec.key }}">
+      <select id="f_{{ spec.key }}" name="{{ spec.key }}" class="enh-select">
         {% for cval, clabel in spec.choices %}<option value="{{ cval }}" {{ 'selected' if cval|string == val|string }}>{{ clabel }}</option>{% endfor %}
       </select>
     {% else %}
@@ -22,7 +39,7 @@
   {% set val = prefill.options.get(spec.key, spec.default) %}
   <div style="margin-bottom:12px">
     <label for="f_{{ spec.key }}" style="display:block;font-weight:600;font-size:13px">{{ spec.label }}</label>
-    <select id="f_{{ spec.key }}" name="{{ spec.key }}">
+    <select id="f_{{ spec.key }}" name="{{ spec.key }}" class="enh-select">
       <option value="" {{ 'selected' if not val }}>Auto-detect (by chipset)</option>
       {% for c in iface_choices %}
         <option value="{{ c.iface }}" {{ 'disabled' if not c.selectable }} {{ 'selected' if c.iface == val and c.selectable }}>{{ c.iface }}{% if c.note %} — {{ c.note }}{% endif %}</option>
@@ -43,15 +60,17 @@
     {% elif spec.kind == 'int' %}
       <input type="number" name="{{ spec.key }}" value="{{ val }}" min="{{ spec.min }}" max="{{ spec.max }}" step="1">
     {% elif spec.key == 'nmap_scan_type' %}
+      <div class="seg">
       {% for cval, clabel in spec.choices %}
         {% set opt_root = cval in (spec.root_choices or []) %}
-        <label style="display:block;font-weight:400">
-          <input type="radio" name="nmap_scan_type" value="{{ cval }}" {{ 'checked' if cval|string == val|string }} {{ 'disabled' if opt_root and not privileged }}>
-          {{ clabel }}{% if opt_root and not privileged %} <span class="muted">(needs root)</span>{% endif %}
-        </label>
+        <span class="opt">
+          <input type="radio" id="st_{{ loop.index }}" name="nmap_scan_type" value="{{ cval }}" {{ 'checked' if cval|string == val|string }} {{ 'disabled' if opt_root and not privileged }}>
+          <label for="st_{{ loop.index }}">{{ clabel }}{% if opt_root and not privileged %} <span class="muted">(needs root)</span>{% endif %}</label>
+        </span>
       {% endfor %}
+      </div>
     {% elif spec.kind == 'choice' %}
-      <select id="f_{{ spec.key }}" name="{{ spec.key }}" {{ 'disabled' if root_locked }} {% if spec.requires %}data-requires="{{ spec.requires }}"{% endif %}>
+      <select id="f_{{ spec.key }}" name="{{ spec.key }}" {{ 'disabled' if root_locked }}{% if spec.key not in ('nmap_version_intensity','nmap_os') %} class="enh-select"{% endif %} {% if spec.requires %}data-requires="{{ spec.requires }}"{% endif %}>
         {% for cval, clabel in spec.choices %}
           <option value="{{ cval }}" {{ 'selected' if cval|string == val|string }}>{{ clabel }}{% if cval in (spec.intrusive_choices or []) %} ⚠ intrusive{% endif %}</option>
         {% endfor %}
@@ -65,26 +84,30 @@
 {% macro recon_panel(specs) %}
   <fieldset style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
     <legend class="muted" style="font-size:12px;padding:0 6px">Scan options (nmap)</legend>
-    {# one-click presets #}
+    {# one-click presets as segmented chips #}
     {% for spec in specs if spec.group == 'Preset' %}
       {% set pval = prefill.options.get('nmap_preset', spec.default) %}
-      <div style="margin-bottom:8px">
-        <div style="font-weight:600;font-size:13px;margin-bottom:4px">{{ spec.label }}</div>
+      <div style="margin-bottom:12px">
+        <div style="font-weight:600;font-size:13px;margin-bottom:7px">{{ spec.label }}</div>
+        <div class="seg">
         {% for cval, clabel in spec.choices %}
-          <label style="display:inline-block;margin:0 12px 4px 0;font-weight:400">
-            <input type="radio" name="nmap_preset" value="{{ cval }}" {{ 'checked' if cval|string == pval|string }}> {{ clabel }}
-          </label>
+          <span class="opt">
+            <input type="radio" id="pre_{{ loop.index }}" name="nmap_preset" value="{{ cval }}" {{ 'checked' if cval|string == pval|string }}>
+            <label for="pre_{{ loop.index }}">{{ clabel }}</label>
+          </span>
         {% endfor %}
-        <div class="muted" style="font-size:12px">{{ spec.help }}</div>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:6px">{{ spec.help }}</div>
       </div>
     {% endfor %}
 
     {# live, honest scope estimate (categories + drivers, never fake minutes) #}
-    <div id="scan-estimate" data-cat="{{ scan_estimate.category }}"
-         data-intrusive="{{ '1' if scan_estimate.intrusive else '0' }}"
-         class="banner {{ 'warn' if (scan_estimate.category in ('slow','very-slow')) or scan_estimate.intrusive }}"
-         style="margin:8px 0">
-      <strong>Estimated scope:</strong> <span id="est-cat">{{ scan_estimate.category }}</span><span id="est-drivers" class="muted">{% if scan_estimate.drivers %} · {{ scan_estimate.drivers|join(', ') }}{% endif %}</span><span id="est-intrusive">{% if scan_estimate.intrusive %} · <span style="color:var(--orange)">intrusive</span>{% endif %}</span>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:8px 0">
+      <span class="muted" style="font-size:12px">Estimated scope:</span>
+      <span id="scan-estimate" class="est-badge cat-{{ scan_estimate.category }}"
+            data-cat="{{ scan_estimate.category }}" data-intrusive="{{ '1' if scan_estimate.intrusive else '0' }}">
+        <span class="dot"></span><span id="est-cat">{{ scan_estimate.category }}</span><span id="est-drivers" class="muted" style="font-weight:400">{% if scan_estimate.drivers %} · {{ scan_estimate.drivers|join(', ') }}{% endif %}</span><span id="est-intrusive">{% if scan_estimate.intrusive %} · <span style="color:var(--orange)">intrusive</span>{% endif %}</span>
+      </span>
     </div>
 
     <details style="margin-top:6px">
@@ -100,19 +123,31 @@
     </details>
   </fieldset>
 {% endmacro %}
+{% set wf_meta = {
+  'quick_recon': ('⚡', 'Quick recon', 'Fast host + port sweep of a target.'),
+  'full_audit': ('🛰️', 'Full Audit', 'Chained passive sweep: recon → Wi-Fi → capture → ESP.'),
+  'wifi_scan': ('📡', 'Wi-Fi scan', 'Passive 802.11 reconnaissance (airodump).'),
+  'capture_only': ('🧫', 'Packet capture', 'Passive capture + offline traffic analysis.'),
+  'esp_monitor': ('🛡️', 'ESP monitor', 'Ingest the ESP32-S3 wireless-attack detector.')
+} %}
 {% block content %}
 <h1>Launch a scan</h1>
 
 <div class="panel">
-  <form method="get" action="/scan" class="toolbar" style="margin:0">
-    <label>Workflow&nbsp;
-      <select name="workflow" onchange="this.form.submit()">
-        {% for wf in workflows %}<option value="{{ wf }}" {{ 'selected' if wf == workflow }}>{{ wf }}</option>{% endfor %}
-      </select>
-    </label>
-    <noscript><button class="btn sm" type="submit">Load options</button></noscript>
-    <span class="muted" style="font-size:12px">Options below reflect the modules in this workflow.</span>
-  </form>
+  <h2>Workflow</h2>
+  <div class="wf-grid stagger">
+    {% for wf in workflows %}
+      {% set m = wf_meta.get(wf, ('🧩', wf, 'Custom workflow.')) %}
+      <a class="wf-card {{ 'sel' if wf == workflow }}" href="/scan?workflow={{ wf }}"
+         aria-current="{{ 'true' if wf == workflow else 'false' }}">
+        <span class="wf-ico">{{ m[0] }}</span>
+        <div class="wf-name">{{ m[1] }}</div>
+        <div class="wf-desc">{{ m[2] }}</div>
+      </a>
+    {% endfor %}
+  </div>
+  <div class="muted" style="font-size:12px;margin-top:10px">Options below reflect the modules in
+    <span class="mono">{{ workflow }}</span>.</div>
 </div>
 
 {% if not readonly and discovery is defined %}
@@ -278,8 +313,7 @@
       if (intr) intr.innerHTML = e.intrusive ? ' · <span style="color:var(--orange)">intrusive</span>' : "";
       box.setAttribute("data-cat", e.category || "");
       box.setAttribute("data-intrusive", e.intrusive ? "1" : "0");
-      var warn = (e.category === "slow" || e.category === "very-slow" || e.intrusive);
-      box.className = "banner" + (warn ? " warn" : "");
+      box.className = "est-badge cat-" + (e.category || "moderate");
     }
     function refresh() {
       var data = new URLSearchParams(new FormData(form));
@@ -292,18 +326,152 @@
       syncIntensity();
       clearTimeout(timer); timer = setTimeout(refresh, 250);
     });
-    form.addEventListener("submit", function (ev) {
-      var cat = box.getAttribute("data-cat");
-      var intr = box.getAttribute("data-intrusive") === "1";
-      if (cat === "slow" || cat === "very-slow" || intr) {
-        if (!confirm("This scan looks " + cat + (intr ? " and intrusive" : "") +
-                     ". Launch anyway?")) ev.preventDefault();
-      }
-    });
     syncIntensity();
   })();
   </script>
   {% endif %}
+
+  <!-- scan summary / confirm modal -->
+  <div class="modal-scrim" id="scan-modal" role="dialog" aria-modal="true" aria-labelledby="sum-title">
+    <div class="modal">
+      <h3 id="sum-title">Review scan</h3>
+      <div class="muted" style="font-size:13px">Confirm the options before launching.</div>
+      <div id="sum-estimate" style="margin:14px 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap"></div>
+      <ul class="sum-list" id="sum-list"></ul>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="sum-cancel">Cancel</button>
+        <button type="button" class="btn primary" id="sum-confirm">Confirm &amp; launch</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    "use strict";
+    /* --- custom dropdowns: overlay a real <select> (which stays the form field) --- */
+    function enhance(sel) {
+      if (sel.dataset.enh || sel.disabled) return;
+      sel.dataset.enh = "1";
+      var wrap = document.createElement("div"); wrap.className = "enh";
+      sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel); sel.classList.add("enh-native");
+      var trig = document.createElement("button"); trig.type = "button"; trig.className = "enh-trigger";
+      trig.setAttribute("aria-haspopup", "listbox"); trig.setAttribute("aria-expanded", "false");
+      var lbl = document.createElement("span"); var car = document.createElement("span");
+      car.className = "caret"; car.textContent = "▾";
+      trig.appendChild(lbl); trig.appendChild(car);
+      var menu = document.createElement("ul"); menu.className = "enh-menu"; menu.setAttribute("role", "listbox");
+      wrap.appendChild(trig); wrap.appendChild(menu);
+      function relabel() { var o = sel.options[sel.selectedIndex]; lbl.textContent = o ? o.textContent : ""; }
+      function build() {
+        menu.innerHTML = "";
+        Array.prototype.forEach.call(sel.options, function (o, i) {
+          var li = document.createElement("li"); li.className = "enh-opt"; li.textContent = o.textContent;
+          li.setAttribute("role", "option"); li.setAttribute("data-idx", i);
+          if (o.disabled) li.setAttribute("aria-disabled", "true");
+          if (i === sel.selectedIndex) li.setAttribute("aria-selected", "true");
+          li.addEventListener("click", function () { if (!o.disabled) choose(i); });
+          menu.appendChild(li);
+        });
+      }
+      function choose(i) { sel.selectedIndex = i; sel.dispatchEvent(new Event("change", { bubbles: true }));
+        relabel(); close(); trig.focus(); }
+      function openMenu() { wrap.classList.add("open"); trig.setAttribute("aria-expanded", "true"); build();
+        var a = menu.querySelector('[aria-selected="true"]') || menu.querySelector(".enh-opt"); if (a) a.classList.add("active"); }
+      function close() { wrap.classList.remove("open"); trig.setAttribute("aria-expanded", "false"); }
+      function isOpen() { return wrap.classList.contains("open"); }
+      function items() { return Array.prototype.slice.call(menu.querySelectorAll(".enh-opt")); }
+      function setActive(i) { var it = items(); it.forEach(function (x) { x.classList.remove("active"); });
+        if (it[i]) { it[i].classList.add("active"); it[i].scrollIntoView({ block: "nearest" }); } }
+      trig.addEventListener("click", function () { isOpen() ? close() : openMenu(); });
+      trig.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!isOpen()) openMenu(); }
+      });
+      document.addEventListener("keydown", function (e) {
+        if (!isOpen()) return;
+        var it = items(), act = menu.querySelector(".enh-opt.active"), idx = it.indexOf(act);
+        if (e.key === "Escape") { close(); trig.focus(); }
+        else if (e.key === "ArrowDown") { e.preventDefault(); setActive(Math.min(it.length - 1, idx + 1)); }
+        else if (e.key === "ArrowUp") { e.preventDefault(); setActive(Math.max(0, idx - 1)); }
+        else if (e.key === "Enter") { e.preventDefault(); if (act && act.getAttribute("aria-disabled") !== "true") choose(parseInt(act.getAttribute("data-idx"), 10)); }
+      });
+      document.addEventListener("click", function (e) { if (isOpen() && !wrap.contains(e.target)) close(); });
+      sel.addEventListener("change", relabel);
+      relabel();
+    }
+    Array.prototype.forEach.call(document.querySelectorAll("select.enh-select"), enhance);
+
+    /* --- duration + channel chips set a real input (which stays the form field) --- */
+    function wireChips(container, attr, inputAttr) {
+      var input = document.getElementById(container.getAttribute(inputAttr));
+      if (!input) return;
+      container.addEventListener("click", function (e) {
+        var b = e.target.closest(".chip-btn"); if (!b) return;
+        input.value = b.getAttribute(attr);
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        Array.prototype.forEach.call(container.querySelectorAll(".chip-btn"), function (x) { x.classList.remove("sel"); });
+        b.classList.add("sel");
+      });
+      input.addEventListener("input", function () {   // custom typing clears chip selection
+        Array.prototype.forEach.call(container.querySelectorAll(".chip-btn"), function (x) {
+          x.classList.toggle("sel", x.getAttribute(attr) === input.value);
+        });
+      });
+    }
+    Array.prototype.forEach.call(document.querySelectorAll(".chips[data-dur-for]"),
+      function (c) { wireChips(c, "data-dur", "data-dur-for"); });
+    Array.prototype.forEach.call(document.querySelectorAll(".chips[data-chan-for]"),
+      function (c) { wireChips(c, "data-chan", "data-chan-for"); });
+
+    /* --- summary / confirm gate on launch --- */
+    var scanForm = document.getElementById("scan-form");
+    var modal = document.getElementById("scan-modal");
+    if (!scanForm || !modal) return;
+    var confirmed = false;
+    function pretty(name) {
+      return name.replace(/^nmap_/, "").replace(/^capture_/, "").replace(/^wifi_/, "")
+                 .replace(/_/g, " ").replace(/\b\w/g, function (m) { return m.toUpperCase(); });
+    }
+    function fieldDisplay(el) {
+      if (el.tagName === "SELECT") { var o = el.options[el.selectedIndex]; return o ? o.textContent.trim() : el.value; }
+      if (el.type === "checkbox") return "on";
+      return el.value;
+    }
+    function buildSummary() {
+      var list = document.getElementById("sum-list"); list.innerHTML = "";
+      function row(k, v) {
+        var li = document.createElement("li");
+        var kk = document.createElement("span"); kk.className = "k"; kk.textContent = k;
+        var vv = document.createElement("span"); vv.className = "v"; vv.textContent = v;
+        li.appendChild(kk); li.appendChild(vv); list.appendChild(li);
+      }
+      var t = document.getElementById("scan_target");
+      row("Target", (t && t.value) ? t.value : "auto-detected /24");
+      var done = {};
+      Array.prototype.forEach.call(scanForm.elements, function (el) {
+        if (!el.name || el.name === "csrf" || el.name === "target") return;
+        if ((el.type === "radio" || el.type === "checkbox") && !el.checked) return;
+        var v = el.type === "checkbox" ? "on" : el.value;
+        if (v === "" || v == null) return;
+        if (el.type === "radio" && done[el.name]) return;
+        done[el.name] = 1;
+        row(pretty(el.name), fieldDisplay(el));
+      });
+      var se = document.getElementById("sum-estimate"); se.innerHTML = "";
+      var est = document.getElementById("scan-estimate");
+      if (est) { se.appendChild(document.createTextNode("Estimated scope: "));
+        var clone = est.cloneNode(true); clone.removeAttribute("id"); se.appendChild(clone); }
+    }
+    scanForm.addEventListener("submit", function (ev) {
+      if (confirmed) return;
+      ev.preventDefault(); buildSummary(); modal.classList.add("open");
+      var cf = document.getElementById("sum-confirm"); if (cf) cf.focus();
+    });
+    document.getElementById("sum-cancel").addEventListener("click", function () { modal.classList.remove("open"); });
+    document.getElementById("sum-confirm").addEventListener("click", function () { confirmed = true; scanForm.submit(); });
+    modal.addEventListener("click", function (e) { if (e.target === modal) modal.classList.remove("open"); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") modal.classList.remove("open"); });
+  })();
+  </script>
   {% endif %}
 </div>
 {% endblock %}
