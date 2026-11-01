@@ -947,7 +947,14 @@ def create_app(core_config: Optional[Config] = None,
         form = await _parse_form(request)
         if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
             return HTMLResponse("CSRF validation failed.", status_code=403)
-        changes = {"readonly": form.get("readonly") in ("1", "on", "true")}
+
+        def checkbox(name: str) -> bool:
+            # HTML checkbox semantics: an UNCHECKED box sends no field at all, a
+            # checked one sends its value. So absent -> False, present -> True.
+            # Applied uniformly to every checkbox on this form.
+            return form.get(name) in ("1", "on", "true")
+
+        changes = {"readonly": checkbox("readonly")}
         for key in ("nmap_timing", "nmap_top_ports", "nmap_timeout"):
             if form.get(key) not in (None, ""):
                 changes[key] = form[key]
@@ -961,7 +968,7 @@ def create_app(core_config: Optional[Config] = None,
             changes["target_discovery_mode"] = form["target_discovery_mode"]
         # Privileged scan mode — readonly-blocked (ignored while read-only).
         if not dash_config.readonly:
-            changes["nmap_privileged"] = form.get("nmap_privileged") in ("1", "on", "true")
+            changes["nmap_privileged"] = checkbox("nmap_privileged")
         try:
             settings_mod.update(core_config, dash_config, changes)
         except ValueError:

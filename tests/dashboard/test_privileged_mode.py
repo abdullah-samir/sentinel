@@ -70,6 +70,53 @@ def test_toggle_route_enables_via_settings(tmp_path):
     assert settings_mod.load(cfg).get("nmap_privileged") is True
 
 
+def _privileged_box_checked(html: str) -> bool:
+    """True iff the rendered 'nmap_privileged' checkbox is checked."""
+    m = re.search(r'<input[^>]*name="nmap_privileged"[^>]*>', html, re.S)
+    assert m, "nmap_privileged checkbox not rendered"
+    return "checked" in m.group(0)
+
+
+def test_checkbox_roundtrip_persists_and_renders_both_states(tmp_path):
+    """End-to-end: saving with the box ON persists enabled AND re-renders checked;
+    saving with it OFF (field absent) persists disabled AND re-renders unchecked."""
+    cfg, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    # the full form a browser submits (selects/numbers always present; the
+    # checkbox is present only when checked)
+    base = {"csrf": csrf, "nmap_timing": "4", "nmap_top_ports": "0",
+            "nmap_timeout": "300", "wifi_iface": "", "discovery_seconds": "12",
+            "target_discovery_mode": "on_demand"}
+
+    # ON
+    r = c.post("/settings/config", data=dict(base, nmap_privileged="1"),
+               follow_redirects=True)
+    assert settings_mod.load(cfg).get("nmap_privileged") is True      # persisted
+    assert _privileged_box_checked(r.text) is True                    # rendered checked
+    assert _privileged_box_checked(c.get("/settings").text) is True   # and on a fresh GET
+
+    # OFF (checkbox omitted, as an unchecked box is)
+    r = c.post("/settings/config", data=dict(base), follow_redirects=True)
+    assert settings_mod.load(cfg).get("nmap_privileged") is False     # persisted disabled
+    assert _privileged_box_checked(r.text) is False                   # rendered unchecked
+    assert _privileged_box_checked(c.get("/settings").text) is False
+
+
+def test_other_form_settings_not_regressed_when_toggling_privileged(tmp_path):
+    cfg, _, app = make_env(tmp_path)
+    c = TestClient(app)
+    csrf = login_csrf(c)
+    c.post("/settings/config", data={"csrf": csrf, "nmap_privileged": "1",
+           "nmap_timing": "2", "nmap_top_ports": "25", "nmap_timeout": "60",
+           "wifi_iface": "", "discovery_seconds": "30",
+           "target_discovery_mode": "on_demand"}, follow_redirects=False)
+    stored = settings_mod.load(cfg)
+    assert stored.get("nmap_privileged") is True          # the checkbox saved
+    assert stored.get("nmap_timing") == "2"               # other fields still saved
+    assert stored.get("nmap_top_ports") == 25 and stored.get("nmap_timeout") == 60
+
+
 def test_toggle_readonly_blocked(tmp_path):
     cfg, _, app = make_env(tmp_path, readonly=True)
     c = TestClient(app)
