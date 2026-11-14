@@ -47,6 +47,7 @@ from typing import Dict, Iterator, List, Optional, Tuple
 from core.module import Manifest, Module
 from core.registry import register
 from core.schema import Severity
+from core.state import serial_claimed_by_other
 
 log = logging.getLogger("sentinel.blue.esp_sensor")
 
@@ -268,6 +269,11 @@ class EspSensor(Module):
     def is_available(self, ctx) -> Tuple[bool, str]:
         cfg = ctx.config
         port = (getattr(cfg, "esp_serial_port", "") or "/dev/ttyACM0")
+        # Stand down if the dashboard's persistent bridge (a different, alive
+        # process) owns the port — two owners can't share an exclusive handle.
+        # Inert when no live claim exists (the common case).
+        if serial_claimed_by_other(port, config=cfg):
+            return (False, "ESP serial owned by the dashboard bridge")
         url = (getattr(cfg, "esp_url", "") or "").strip()
         try:
             if _serial_present(port):

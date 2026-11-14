@@ -69,6 +69,12 @@ class Config:
     esp_baud: int = 115200
     esp_url: str = ""                      # e.g. http://10.10.1.50 (MODE_CONNECTED)
     esp_listen_seconds: int = 30           # bounded read/poll duration
+    esp_bridge_enabled: bool = True        # dashboard persistent serial bridge: FIRST-BOOT
+                                           # default only. The dashboard toggle persists an
+                                           # override (data/state/esp_bridge.json) that wins.
+                                           # When on, the bridge owns the port and
+                                           # blue.esp_sensor stands down. Two-way env override:
+                                           # SENTINEL_ESP_BRIDGE=1/true/on or =0/false/off.
 
     # --- derived paths (never serialized into run JSON) -------------------
     @property
@@ -174,4 +180,12 @@ class Config:
                     setattr(cfg, attr, int(raw))
                 except ValueError:
                     pass
+        raw = os.environ.get("SENTINEL_ESP_BRIDGE")
+        if raw is not None:
+            v = raw.strip().lower()
+            if v in ("1", "true", "yes", "on"):
+                cfg.esp_bridge_enabled = True
+            elif v in ("0", "false", "no", "off"):
+                cfg.esp_bridge_enabled = False
+            # anything else (unset handled above) leaves the dataclass default
         return cfg

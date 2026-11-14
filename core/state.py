@@ -316,3 +316,149 @@ def interface_safety_check(iface: str, run_id: Optional[str] = None,
     if busy:
         return (False, busy)
     return (True, "")
+
+
+# --------------------------------------------------------------------------- #
+# serial-port ownership claim (lives in core for the SAME layering reason as the
+# interface registry: the dashboard's persistent ESP bridge claims the port, and
+# a plugin — blue.esp_sensor — must stand down for it WITHOUT importing dashboard)
+# --------------------------------------------------------------------------- #
+#
+# A flat, file-backed map ``{port: {"label", "pid", "ts"}}`` persisted atomically
+# to ``data/state/serial_claim.json``. Only ONE owner can hold a given port's
+# exclusive serial handle at a time; this file lets a separate process (the
+# esp_sensor run) see that the live dashboard bridge owns it and skip cleanly.
+_SERIAL_LOCK = threading.Lock()
+
+
+def serial_state_path(config=None) -> Path:
+    if config is None:
+        from core.config import Config
+        config = Config.from_env()
+    return Path(config.root) / "data" / "state" / "serial_claim.json"
+
+
+def _load_serial_claims(path: Path) -> Dict[str, dict]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, dict)}
+
+
+def _save_serial_claims(path: Path, data: Dict[str, dict]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as e:  # a save failure must never crash the caller
+        log.warning("serial claim save failed (%s): %s", path, e)
+
+
+def claim_serial(port: str, label: str = "", config=None) -> None:
+    """Record this process as the owner of `port` (overwrites any prior claim —
+    the live opener is authoritative). Never raises."""
+    with _SERIAL_LOCK:
+        path = serial_state_path(config)
+        data = _load_serial_claims(path)
+        data[port] = {"label": label, "pid": os.getpid(), "ts": utcnow_iso()}
+        _save_serial_claims(path, data)
+
+
+def release_serial(port: str, config=None) -> bool:
+    """Drop this port's claim. Returns True if one was removed. Never raises."""
+    with _SERIAL_LOCK:
+        path = serial_state_path(config)
+        data = _load_serial_claims(path)
+        if port in data:
+            del data[port]
+            _save_serial_claims(path, data)
+            return True
+        return False
+
+
+def serial_claimed_by_other(port: str, config=None) -> str:
+    """Non-empty reason iff `port` is claimed by a *different, still-alive*
+    process (reuses :func:`pid_alive`). "" when free, claimed by a dead process,
+    or claimed by this process itself. Never raises."""
+    try:
+        with _SERIAL_LOCK:
+            path = serial_state_path(config)
+            r = _load_serial_claims(path).get(port)
+        if not r:
+            return ""
+        pid = r.get("pid")
+        if pid == os.getpid():
+            return ""                               # our own claim
+        if not pid_alive(pid):
+            return ""                               # dead holder -> not owned
+        who = r.get("label") or f"pid {pid}"
+        return f"{port} is owned by {who}"
+    except Exception:  # noqa: BLE001 — a probe must never crash a run or page
+        return ""
+
+
+# --- ESP bridge on/off override (persisted, survives restarts) ------------
+# The dashboard toggle writes data/state/esp_bridge.json; its value overrides the
+# first-boot config default. Single source of truth for "should the bridge run".
+_ESP_BRIDGE_LOCK = threading.Lock()
+
+
+def esp_bridge_state_path(config=None) -> Path:
+    if config is None:
+        from core.config import Config
+        config = Config.from_env()
+    return Path(config.root) / "data" / "state" / "esp_bridge.json"
+
+
+def esp_bridge_override(config=None) -> Optional[bool]:
+    """The persisted on/off override, or None when no override file exists (so the
+    config default applies). Never raises."""
+    path = esp_bridge_state_path(config)
+    with _ESP_BRIDGE_LOCK:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+    if isinstance(data, dict) and isinstance(data.get("enabled"), bool):
+        return data["enabled"]
+    return None
+
+
+def set_esp_bridge_override(enabled: bool, config=None) -> None:
+    """Persist the on/off override atomically. Never raises."""
+    path = esp_bridge_state_path(config)
+    with _ESP_BRIDGE_LOCK:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps({"enabled": bool(enabled)}, indent=2),
+                           encoding="utf-8")
+            os.replace(tmp, path)
+        except OSError as e:
+            log.warning("esp bridge override save failed (%s): %s", path, e)
+
+
+def clear_esp_bridge_override(config=None) -> bool:
+    """Remove the override so the config default applies again. True if one existed."""
+    path = esp_bridge_state_path(config)
+    with _ESP_BRIDGE_LOCK:
+        try:
+            path.unlink()
+            return True
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return False
+
+
+def esp_bridge_effective_enabled(config) -> bool:
+    """The single source of truth for whether the bridge should be running: the
+    persisted override if present, else the first-boot config default."""
+    ov = esp_bridge_override(config)
+    if ov is not None:
+        return ov
+    return bool(getattr(config, "esp_bridge_enabled", False))

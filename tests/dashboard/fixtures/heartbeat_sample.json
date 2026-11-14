@@ -1,0 +1,10 @@
+{
+  "t": "heartbeat",
+  "mode": "sniffer",
+  "channel": 6,
+  "uptime_ms": 20003,
+  "frames_seen": 859,
+  "dropped": 0,
+  "wifi_connected": false,
+  "detections_total": 0
+}

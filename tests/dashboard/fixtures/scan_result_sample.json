@@ -1,0 +1,33 @@
+{
+  "t": "scan_result",
+  "mode": "r",
+  "mode_name": "random bluetooth odd/even",
+  "passes": 1,
+  "dwell_us": 220,
+  "channels_total": 80,
+  "modules": [
+    {
+      "id": 1,
+      "name": "module-1",
+      "ok": true,
+      "status": "ok",
+      "active_count": 0,
+      "hits": []
+    },
+    {
+      "id": 2,
+      "name": "module-2",
+      "ok": true,
+      "status": "ok",
+      "active_count": 1,
+      "hits": [
+        {
+          "ch": 26,
+          "freq": 2426,
+          "hits": 1
+        }
+      ]
+    }
+  ],
+  "ok": true
+}

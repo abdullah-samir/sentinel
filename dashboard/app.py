@@ -36,7 +36,8 @@ from core.context import RunContext
 from core.events import EventBus
 from core.hardware import build_hardware
 from core.schema import RunResult, make_run_id, utcnow_iso
-from core.state import get_interface_registry, interface_safety_check
+from core.state import (get_interface_registry, interface_safety_check,
+                        esp_bridge_effective_enabled, set_esp_bridge_override)
 from core.store import Store
 from core.workflows import load_workflows
 from dashboard.auth import (
@@ -44,12 +45,14 @@ from dashboard.auth import (
     verify_password,
 )
 from dashboard.config import DashConfig, load_dash_config, save_dash_config
+from dashboard.esp_bridge import EspBridge
 from dashboard.live import attach_log_capture, detach_log_capture, sse
 from dashboard.schedule import Scheduler
 from dashboard.state import RunState
 from dashboard import assets as assets_mod
 from dashboard import discovery as discovery_mod
 from dashboard import esp as esp_mod
+from dashboard import esp_control as esp_control_mod
 from dashboard import interfaces as interfaces_mod
 from dashboard import terminal as terminal_mod
 from dashboard import launcher, manage, settings as settings_mod
@@ -122,6 +125,12 @@ def create_app(core_config: Optional[Config] = None,
     # Background target monitor (mode b) — only engages with 2+ monitor adapters;
     # dormant otherwise. Released on shutdown.
     background_monitor = discovery_mod.BackgroundMonitor(core_config, iface_registry)
+    # Persistent ESP serial bridge — constructed ALWAYS (construction never opens
+    # the port), started on boot only when the effective on/off state is on (the
+    # persisted dashboard override, else the config default). The live toggle flips
+    # it without a restart. While active it is the single owner of the ESP serial
+    # port and blue.esp_sensor stands down.
+    esp_bridge = EspBridge(core_config)
     limiter = RateLimiter()
     assets_cache: dict = {}            # signature-cached asset aggregation
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES)),
@@ -135,11 +144,16 @@ def create_app(core_config: Optional[Config] = None,
         sched = getattr(app.state, "scheduler", None)
         if sched is not None:
             sched.start()                     # not under bare TestClient(app)
+        bridge = getattr(app.state, "esp_bridge", None)
+        if bridge is not None and esp_bridge_effective_enabled(core_config):
+            bridge.start()                    # starts iff effective-on; no-op when off
         try:
             yield
         finally:
             if sched is not None:
                 sched.stop()
+            if bridge is not None:
+                bridge.stop()                 # idempotent; releases the serial claim
             background_monitor.stop()         # release any dedicated monitor adapter
 
     app = FastAPI(title="Sentinel Dashboard", docs_url=None, redoc_url=None,
@@ -149,6 +163,7 @@ def create_app(core_config: Optional[Config] = None,
     app.state.dash_config = dash_config
     app.state.iface_registry = iface_registry
     app.state.background_monitor = background_monitor
+    app.state.esp_bridge = esp_bridge
 
     # Offline static assets (vendored xterm.js for the terminal, etc.).
     _static = Path(__file__).parent / "static"
@@ -665,9 +680,89 @@ def create_app(core_config: Optional[Config] = None,
             return login_redirect()
         wfs = load_workflows(core_config)
         return render("esp.html", request, nav_active="esp",
-                      esp=esp_mod.esp_panel(core_config),
+                      esp=esp_mod.esp_panel(core_config, app.state.esp_bridge),
                       can_run=("esp_monitor" in wfs) and not dash_config.readonly,
                       active=run_state.current())
+
+    # --- ESP live control (E3): console + SSE stream + spectrum chart -----
+    @app.get("/esp/control")
+    def esp_control_page(request: Request):
+        if not current_user(request):
+            return login_redirect()
+        bridge = app.state.esp_bridge
+        enabled = esp_bridge_effective_enabled(core_config)
+        alive = enabled and bridge.is_alive()
+        seed = {
+            "status": bridge.latest_status(),
+            "status_result": bridge.latest_result("status_result"),
+            "scan_result": bridge.latest_result("scan_result"),
+            "alive": alive,
+        }
+        # Always render the full page; the toggle reflects `bridge_enabled` and the
+        # command controls are live only when the bridge is on (never a dead end).
+        return render("esp_control.html", request, nav_active="esp",
+                      bridge_enabled=enabled, alive=alive, seed=seed,
+                      commands=esp_control_mod.COMMANDS, modes=esp_control_mod.MODES)
+
+    @app.post("/esp/bridge")
+    async def esp_bridge_toggle(request: Request):
+        if not current_user(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if dash_config.readonly:
+            return JSONResponse({"ok": False, "error": "read-only mode"}, status_code=403)
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return JSONResponse({"ok": False, "error": "CSRF validation failed"},
+                                status_code=403)
+        raw = str(form.get("enabled", "")).strip().lower()
+        want = raw in ("1", "true", "yes", "on")
+        set_esp_bridge_override(want, config=core_config)   # persists across restarts
+        bridge = app.state.esp_bridge
+        if want:
+            bridge.start()                 # re-claims the port (idempotent)
+        else:
+            bridge.stop()                  # releases the claim + closes the port
+        log.info("esp bridge toggle user=%s enabled=%s", current_user(request), want)
+        return JSONResponse({"ok": True, "enabled": want, "alive": bridge.is_alive()})
+
+    @app.post("/esp/command")
+    async def esp_command_route(request: Request):
+        if not current_user(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if dash_config.readonly:
+            return JSONResponse({"ok": False, "error": "read-only mode"}, status_code=403)
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return JSONResponse({"ok": False, "error": "CSRF validation failed"},
+                                status_code=403)
+        cmd = esp_control_mod.sanitize_command(form.get("cmd", ""))
+        if not cmd:
+            return JSONResponse({"ok": False, "error": "empty command"}, status_code=400)
+        if len(cmd) > esp_control_mod.ESP_CMD_MAX_LEN:
+            return JSONResponse(
+                {"ok": False,
+                 "error": f"command too long (max {esp_control_mod.ESP_CMD_MAX_LEN})"},
+                status_code=400)
+        ok = app.state.esp_bridge.send_command(cmd)
+        log.info("esp command user=%s cmd=%r ok=%s", current_user(request), cmd, ok)
+        return JSONResponse({"ok": ok, "sent": cmd,
+                             "reason": None if ok else "ESP serial port not open"})
+
+    @app.get("/esp/command/catalog")
+    def esp_catalog_route(request: Request):
+        if not current_user(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        cat = esp_control_mod.catalog_from_logs(app.state.esp_bridge.recent_logs())
+        return JSONResponse(cat)
+
+    @app.get("/esp/stream")
+    async def esp_stream_route(request: Request):
+        if not current_user(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        return StreamingResponse(
+            esp_control_mod.esp_stream_events(app.state.esp_bridge),
+            media_type="text/event-stream", headers=headers)
 
     # --- interfaces (read-only live panel + mode-assignment control) ------
     def _render_interfaces(request: Request, notice=None, notice_err=False):

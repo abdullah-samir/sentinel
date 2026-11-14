@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+{% block title %}ESP control{% endblock %}
+{% block content %}
+{% set controls_off = readonly or not bridge_enabled %}
+<h1>ESP live control</h1>
+
+<div class="banner">
+  Live console for the ESP32-S3 sensor over the serial bridge. It is
+  <b>detection-only</b> and never transmits. Any command — current or future —
+  works from the free-text box; the buttons are shortcuts.
+  <a href="/esp">Recorded runs →</a>
+</div>
+
+<!-- BRIDGE TOGGLE ------------------------------------------------------- -->
+<div class="panel esp-toggle-panel">
+  <div class="esp-toggle-row">
+    <div>
+      <div class="esp-toggle-title">
+        Serial bridge
+        <span id="esp-bridge-pill" class="esp-pill {{ 'on' if bridge_enabled else 'off' }}">
+          {{ 'ON' if bridge_enabled else 'OFF' }}</span>
+      </div>
+      <div class="muted esp-toggle-sub">
+        {% if not bridge_enabled %}
+          Bridge is off — toggle on to connect to the ESP over serial.
+        {% elif not alive %}
+          Bridge on, waiting for the ESP (no heartbeat yet).
+        {% else %}
+          Bridge on — owning the serial port; the sensor plugin stands down.
+        {% endif %}
+      </div>
+    </div>
+    <button id="esp-bridge-btn" type="button"
+            class="btn {{ 'danger' if bridge_enabled else 'primary' }}"
+            data-enabled="{{ 'true' if bridge_enabled else 'false' }}"
+            {{ 'disabled' if readonly }}>
+      {{ 'Turn off' if bridge_enabled else 'Turn on' }}
+    </button>
+  </div>
+  <div class="muted esp-toggle-msg" id="esp-bridge-msg">
+    {% if readonly %}Read-only mode — the toggle is disabled.{% endif %}
+  </div>
+</div>
+
+{% if bridge_enabled and not alive %}
+<div class="banner esp-warn" id="esp-offline">
+  ESP not responding (no heartbeat). Controls still send; output appears below
+  once it answers.
+</div>
+{% endif %}
+
+<script type="application/json" id="esp-seed">{{ seed | tojson }}</script>
+
+<!-- STATUS STRIP ------------------------------------------------------- -->
+<div class="cards" id="esp-strip">
+  <div class="card">
+    <div class="n" id="esp-live" style="color:{{ '#34D399' if alive else '#FF9B3D' }}">
+      {{ 'ALIVE' if alive else 'SILENT' }}</div>
+    <div class="l">sensor</div>
+  </div>
+  <div class="card"><div class="n" id="esp-mode">—</div><div class="l">detector mode</div></div>
+  <div class="card"><div class="n" id="esp-channel">—</div><div class="l">channel</div></div>
+  <div class="card"><div class="n" id="esp-frames">—</div><div class="l">frames seen</div></div>
+  <div class="card"><div class="n" id="esp-dropped">—</div><div class="l">dropped</div></div>
+  <div class="card"><div class="n" id="esp-dets">—</div><div class="l">detections total</div></div>
+</div>
+
+<div class="panel">
+  <h2>Scanner</h2>
+  <div class="esp-kv">
+    <span>state <b id="esp-state" class="mono">—</b></span>
+    <span>mode <b id="esp-smode" class="mono">—</b></span>
+    <span>enabled <b id="esp-enabled" class="mono">—</b></span>
+    <span>power <b id="esp-power" class="mono">—</b></span>
+    <span>dwell <b id="esp-dwell" class="mono">—</b></span>
+  </div>
+  <div id="esp-modules" class="esp-modules-grid"></div>
+</div>
+
+<!-- SPECTRUM CHART ----------------------------------------------------- -->
+<div class="panel">
+  <h2>2.4 GHz spectrum — last scan</h2>
+  <div id="esp-chart-wrap">
+    <svg id="esp-chart" viewBox="0 0 640 220" preserveAspectRatio="none"
+         role="img" aria-label="2.4 GHz spectrum"></svg>
+  </div>
+  <div class="muted esp-chart-empty" id="esp-chart-empty">
+    Run <span class="mono">scan</span> to populate the spectrum.
+  </div>
+</div>
+
+<!-- COMMAND CONSOLE ---------------------------------------------------- -->
+<div class="panel">
+  <h2>Command console</h2>
+  <form id="esp-cmd-form" autocomplete="off">
+    <div class="esp-console-row">
+      <input id="esp-cmd-input" class="esp-input mono" type="text" maxlength="120"
+             placeholder="type any command, e.g. scan 5" {{ 'disabled' if controls_off }}>
+      <button id="esp-send" class="btn primary" type="submit" {{ 'disabled' if controls_off }}>Send</button>
+    </div>
+  </form>
+  <div id="esp-cmd-status" class="muted esp-cmd-status">
+    {% if not bridge_enabled and not readonly %}Turn the bridge on to send commands.{% endif %}
+  </div>
+
+  <div class="esp-btns" id="esp-cmd-buttons">
+    {% for c in commands %}
+      <span class="esp-chip">
+        <button class="btn sm esp-btn" type="button" data-cmd="{{ c.cmd }}"
+                {% if c.arg %}data-arg="1"{% endif %} {{ 'disabled' if controls_off }}>{{ c.label }}</button>
+        {% if c.arg %}
+          <input class="esp-arg mono" type="number" data-for="{{ c.cmd }}"
+                 min="{{ c.arg.min }}" max="{{ c.arg.max }}" value="{{ c.arg.default }}"
+                 aria-label="{{ c.label }} argument" {{ 'disabled' if controls_off }}>
+        {% endif %}
+      </span>
+    {% endfor %}
+  </div>
+  <div class="esp-modes-label muted">scan modes</div>
+  <div class="esp-btns" id="esp-mode-buttons">
+    {% for letter, desc in modes.items() %}
+      <button class="btn sm esp-mode" type="button" data-cmd="{{ letter }}"
+              title="{{ desc }}" {{ 'disabled' if controls_off }}>{{ letter }} · {{ desc }}</button>
+    {% endfor %}
+  </div>
+  <div class="muted esp-catalog" id="esp-catalog"></div>
+</div>
+
+<!-- LIVE LOG ----------------------------------------------------------- -->
+<div class="panel">
+  <h2>Serial log</h2>
+  <div id="esp-log" class="esp-log mono" aria-live="polite"></div>
+</div>
+
+<style>
+  .esp-warn{border-color:var(--warn);color:var(--ink)}
+  .esp-toggle-panel{margin-bottom:18px}
+  .esp-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .esp-toggle-title{font-weight:600}
+  .esp-toggle-sub{margin-top:3px;font-size:13px}
+  .esp-toggle-msg:empty{display:none}
+  .esp-toggle-msg{margin-top:8px}
+  .esp-pill{display:inline-block;margin-left:6px;padding:1px 9px;border-radius:999px;font-size:11px;
+    font-weight:700;letter-spacing:.06em;vertical-align:middle}
+  .esp-pill.on{background:rgba(52,211,153,.16);color:#34D399;border:1px solid #1f5a4a}
+  .esp-pill.off{background:rgba(126,140,163,.14);color:var(--muted);border:1px solid var(--border)}
+  .esp-kv{display:flex;flex-wrap:wrap;gap:8px 22px;margin-bottom:12px;color:var(--ink-dim);font-size:13px}
+  .esp-kv b{color:var(--ink)}
+  .esp-modules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+  .esp-mod{border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 11px;background:var(--surface-1)}
+  .esp-mod .h{font-family:var(--font-mono);font-size:12px;color:var(--ink);margin-bottom:3px}
+  .esp-mod .s{font-size:12px;color:var(--muted)}
+  .esp-mod.ok{border-color:#1f5a4a}
+  .esp-mod.bad{border-color:#5b2330}
+  #esp-chart-wrap{width:100%;overflow:hidden}
+  #esp-chart{width:100%;height:220px;display:block}
+  .esp-chart-empty{margin-top:8px}
+  .esp-console-row{display:flex;gap:10px;align-items:stretch}
+  .esp-input{flex:1;min-width:0;background:var(--surface-1);border:1px solid var(--border-strong);
+    color:var(--ink);border-radius:var(--r-sm);padding:10px 13px;font-size:14px}
+  .esp-input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px var(--glow-soft)}
+  .esp-input:disabled{opacity:.5}
+  .esp-cmd-status{min-height:18px;margin:8px 0}
+  .esp-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .esp-chip{display:inline-flex;align-items:center;gap:5px}
+  .esp-arg{width:76px;background:var(--surface-1);border:1px solid var(--border);color:var(--ink);
+    border-radius:var(--r-sm);padding:7px 8px;font-size:13px}
+  .esp-modes-label{margin:14px 0 4px;text-transform:uppercase;letter-spacing:.1em;font-size:11px}
+  .esp-catalog{margin-top:12px;font-size:12px}
+  .esp-log{height:300px;overflow-y:auto;background:#06090f;border:1px solid var(--border);
+    border-radius:var(--r-sm);padding:10px 12px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;
+    word-break:break-word}
+  .esp-log .ln{color:var(--ink-dim)}
+  .esp-log .ln.j{color:var(--cyan-2)}
+  .esp-log .ln.err{color:var(--sev-high)}
+</style>
+
+<script>
+(function () {
+  "use strict";
+  var csrf = "{{ csrf_token }}";
+  var READONLY = {{ 'true' if readonly else 'false' }};
+  var ENABLED  = {{ 'true' if bridge_enabled else 'false' }};
+  var CONTROLS_OFF = READONLY || !ENABLED;
+
+  function $(id){ return document.getElementById(id); }
+  function setText(id,t){ var e=$(id); if(e) e.textContent=(t===undefined||t===null||t==="")?"—":String(t); }
+  function num(v){ var n=Number(v); return isFinite(n)?n:null; }
+
+  // ---- bridge on/off toggle ----------------------------------------------
+  var toggleBtn=$("esp-bridge-btn");
+  if(toggleBtn && !READONLY){
+    toggleBtn.addEventListener("click", function(){
+      var want = toggleBtn.getAttribute("data-enabled")!=="true";   // flip
+      toggleBtn.disabled=true;
+      var msg=$("esp-bridge-msg"); if(msg) msg.textContent = want?"turning on…":"turning off…";
+      fetch("/esp/bridge", { method:"POST",
+          headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+          body:new URLSearchParams({ csrf:csrf, enabled: want?"1":"0" }) })
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if(j && j.ok){ location.reload(); }     // re-render in the new state + reconnect
+          else { if(msg) msg.textContent="failed: "+((j&&j.error)||"unknown"); toggleBtn.disabled=false; }
+        })
+        .catch(function(){ if(msg) msg.textContent="request failed"; toggleBtn.disabled=false; });
+    });
+  }
+
+  // ---- serial log (textContent only; device output is untrusted) ----------
+  var logEl=$("esp-log"), MAXLOG=500;
+  function addLine(raw, cls){
+    if(!logEl) return;
+    var div=document.createElement("div");
+    div.className="ln"+(cls?(" "+cls):"");
+    div.textContent=raw;
+    logEl.appendChild(div);
+    while(logEl.childNodes.length>MAXLOG) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop=logEl.scrollHeight;
+  }
+  function logLine(raw){
+    var cls="";
+    if(raw && raw.charAt(0)==="{"){ cls="j"; }
+    if(raw && (raw.indexOf('"cmd_error"')>=0 || raw.indexOf('"error"')>=0)) cls="err";
+    addLine(raw, cls);
+  }
+
+  // ---- status strip -------------------------------------------------------
+  function setAlive(a){
+    var e=$("esp-live");
+    if(e){ e.textContent=a?"ALIVE":"SILENT"; e.style.color=a?"#34D399":"#FF9B3D"; }
+  }
+  function applyHeartbeat(hb){
+    if(!hb) return;
+    setText("esp-mode", hb.mode);
+    setText("esp-channel", hb.channel);
+    setText("esp-frames", hb.frames_seen);
+    setText("esp-dropped", hb.dropped);
+    setText("esp-dets", hb.detections_total);
+    setAlive(true);
+  }
+  function applyStatusResult(sr){
+    if(!sr) return;
+    setText("esp-state", sr.state);
+    setText("esp-smode", sr.mode_name || sr.mode);
+    setText("esp-enabled", sr.enabled);
+    setText("esp-power", sr.pa);
+    setText("esp-dwell", sr.dwell);
+    var box=$("esp-modules");
+    if(box){
+      box.innerHTML="";
+      (sr.modules||[]).forEach(function(m){
+        if(!m||typeof m!=="object") return;
+        var ok = (m.state==="ready" || m.bus==="up" || m.ok===true);
+        var d=document.createElement("div");
+        d.className="esp-mod "+(ok?"ok":"bad");
+        var h=document.createElement("div"); h.className="h";
+        h.textContent=(m.name||("module-"+(m.id||"?")))+" · ch "+(m.ch!=null?m.ch:"—")+
+                      (m.freq!=null?(" ("+m.freq+" MHz)"):"");
+        var s=document.createElement("div"); s.className="s";
+        s.textContent=(m.state||"?")+" — "+(m.status||"");
+        d.appendChild(h); d.appendChild(s); box.appendChild(d);
+      });
+    }
+  }
+
+  // ---- spectrum chart (numbers only; safe innerHTML) ----------------------
+  var FMIN=2400, FMAX=2500, W=640, H=220, PADL=34, PADB=22, PADT=10, PADR=8;
+  var WIFI=[{f:2412,n:"1"},{f:2437,n:"6"},{f:2462,n:"11"}];
+  function series(sr){
+    if(!sr||typeof sr!=="object") return [];
+    var rows=[], agg={};
+    (sr.modules||[]).forEach(function(m){ if(m&&m.hits&&m.hits.forEach) m.hits.forEach(function(h){ rows.push(h); }); });
+    if(sr.channels&&sr.channels.forEach) sr.channels.forEach(function(h){ rows.push(h); });
+    rows.forEach(function(h){
+      if(!h||typeof h!=="object") return;
+      var mhz=num(h.freq!=null?h.freq:h.mhz); if(mhz===null) return;
+      var v=num(h.hits!=null?h.hits:(h.rpd!=null?h.rpd:0)); if(v===null) v=0;
+      agg[mhz]=(agg[mhz]||0)+v;
+    });
+    return Object.keys(agg).map(function(k){ return {mhz:+k, value:agg[k]}; })
+                 .sort(function(a,b){ return a.mhz-b.mhz; });
+  }
+  function xOf(mhz){ return PADL + (mhz-FMIN)/(FMAX-FMIN) * (W-PADL-PADR); }
+  function drawChart(sr){
+    var svg=$("esp-chart"), empty=$("esp-chart-empty");
+    if(!svg) return;
+    var s=series(sr);
+    if(!s.length){ svg.innerHTML=""; if(empty) empty.style.display="block"; return; }
+    if(empty) empty.style.display="none";
+    var maxv=1; s.forEach(function(p){ if(p.value>maxv) maxv=p.value; });
+    var y0=H-PADB, plotH=H-PADB-PADT, parts=[];
+    parts.push('<line x1="'+PADL+'" y1="'+y0+'" x2="'+(W-PADR)+'" y2="'+y0+'" stroke="#22304A"/>');
+    WIFI.forEach(function(w){
+      var x=xOf(w.f);
+      parts.push('<line x1="'+x.toFixed(1)+'" y1="'+PADT+'" x2="'+x.toFixed(1)+'" y2="'+y0+'" stroke="#31425f" stroke-dasharray="3 4"/>');
+      parts.push('<text x="'+x.toFixed(1)+'" y="'+(PADT+9)+'" fill="#7E8CA3" font-size="9" text-anchor="middle">ch'+w.n+'</text>');
+    });
+    s.forEach(function(p){
+      var x=xOf(p.mhz), bh=Math.max(2, p.value/maxv*plotH);
+      parts.push('<rect x="'+(x-3).toFixed(1)+'" y="'+(y0-bh).toFixed(1)+'" width="6" height="'+bh.toFixed(1)+'" fill="#22D3EE" rx="1"/>');
+    });
+    [2400,2425,2450,2475,2500].forEach(function(f){
+      parts.push('<text x="'+xOf(f).toFixed(1)+'" y="'+(H-6)+'" fill="#7E8CA3" font-size="9" text-anchor="middle">'+f+'</text>');
+    });
+    parts.push('<text x="4" y="'+(PADT+8)+'" fill="#7E8CA3" font-size="9">'+maxv+'</text>');
+    svg.innerHTML=parts.join("");
+  }
+  var pendingScan=null, rafQueued=false;
+  function queueChart(sr){
+    pendingScan=sr;
+    if(rafQueued) return; rafQueued=true;
+    requestAnimationFrame(function(){ rafQueued=false; drawChart(pendingScan); });
+  }
+
+  // ---- command console ----------------------------------------------------
+  var busyTimer=null;
+  function lockConsole(){
+    if(CONTROLS_OFF) return;
+    var send=$("esp-send"); if(send) send.disabled=true;
+    document.querySelectorAll(".esp-btn,.esp-mode").forEach(function(b){ b.disabled=true; });
+    if(busyTimer) clearTimeout(busyTimer);
+    busyTimer=setTimeout(unlockConsole, 1500);     // fail-safe if no ack arrives
+  }
+  function unlockConsole(){
+    if(CONTROLS_OFF) return;
+    if(busyTimer){ clearTimeout(busyTimer); busyTimer=null; }
+    var send=$("esp-send"); if(send) send.disabled=false;
+    document.querySelectorAll(".esp-btn,.esp-mode").forEach(function(b){ b.disabled=false; });
+  }
+  function setCmdStatus(t){ setText("esp-cmd-status", t); }
+  function sendCommand(text){
+    if(CONTROLS_OFF || !text) return;
+    lockConsole();
+    setCmdStatus("sending: "+text);
+    fetch("/esp/command", { method:"POST",
+        headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+        body:new URLSearchParams({ csrf:csrf, cmd:text }) })
+      .then(function(r){ return r.json().then(function(j){ return {s:r.status,j:j}; }); })
+      .then(function(o){
+        if(o.j && o.j.ok){ setCmdStatus("sent ✓ "+(o.j.sent||text)); }
+        else { setCmdStatus("not sent: "+((o.j&&o.j.error)||(o.j&&o.j.reason)||("HTTP "+o.s))); unlockConsole(); }
+      })
+      .catch(function(){ setCmdStatus("request failed"); unlockConsole(); });
+  }
+  var form=$("esp-cmd-form");
+  if(form) form.addEventListener("submit", function(e){
+    e.preventDefault();
+    var inp=$("esp-cmd-input"); if(inp){ sendCommand(inp.value.trim()); inp.select(); }
+  });
+  document.querySelectorAll(".esp-btn").forEach(function(b){
+    b.addEventListener("click", function(){
+      var cmd=b.getAttribute("data-cmd");
+      if(b.getAttribute("data-arg")){
+        var arg=document.querySelector('.esp-arg[data-for="'+cmd+'"]');
+        if(arg && arg.value!=="") cmd=cmd+" "+arg.value;
+      }
+      sendCommand(cmd);
+    });
+  });
+  document.querySelectorAll(".esp-mode").forEach(function(b){
+    b.addEventListener("click", function(){ sendCommand(b.getAttribute("data-cmd")); });
+  });
+
+  // ---- firmware-reported catalog (dynamic discovery) ----------------------
+  function applyCatalog(hr){
+    if(!hr) return;
+    var el=$("esp-catalog"); if(!el) return;
+    var cmds=(hr.commands||[]).join(", ");
+    el.textContent = cmds ? ("firmware reports: "+cmds) : "";
+  }
+
+  // ---- frame dispatch -----------------------------------------------------
+  function onFrame(obj){
+    if(!obj||!obj.t) return;
+    switch(obj.t){
+      case "heartbeat": applyHeartbeat(obj); break;
+      case "status_result": applyStatusResult(obj); break;
+      case "scan_result": queueChart(obj); break;
+      case "help_result": applyCatalog(obj); break;
+      case "ack": case "nak": case "cmd_error": unlockConsole(); break;
+    }
+  }
+  function applySnapshot(s){
+    if(!s) return;
+    if(logEl){ logEl.innerHTML=""; (s.logs||[]).forEach(logLine); }
+    setAlive(!!s.alive);
+    applyHeartbeat(s.status);
+    applyStatusResult(s.status_result);
+    drawChart(s.scan_result);
+  }
+
+  // ---- seed + stream ------------------------------------------------------
+  try{ applySnapshot(JSON.parse(($("esp-seed")||{}).textContent || "null")); }catch(e){}
+
+  if(ENABLED && window.EventSource){      // no point streaming while the bridge is off
+    var es=new EventSource("/esp/stream");
+    es.addEventListener("snapshot", function(ev){ try{ applySnapshot(JSON.parse(ev.data)); }catch(e){} });
+    es.addEventListener("line", function(ev){ try{ logLine(JSON.parse(ev.data)); }catch(e){} });
+    es.addEventListener("frame", function(ev){ try{ onFrame(JSON.parse(ev.data)); }catch(e){} });
+    es.addEventListener("tick", function(ev){ try{ setAlive(!!JSON.parse(ev.data).alive); }catch(e){} });
+    // EventSource auto-reconnects on transient errors.
+  }
+})();
+</script>
+{% endblock %}

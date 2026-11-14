@@ -21,8 +21,44 @@ def _is_esp_run(run: dict) -> bool:
                for f in run.get("findings") or [])
 
 
-def esp_panel(config) -> dict:
-    """Panel view-model from the newest ESP run, or an empty 'no data' shape."""
+_RUNNING_STATES = {"scanning", "searching", "running", "active", "busy"}
+
+
+def _bridge_panel(config, bridge) -> dict:
+    """Live panel view-model from the E2 serial bridge (used only while the bridge
+    is alive). Shapes bridge data into the SAME keys the template already reads, so
+    esp.html renders unchanged. Heartbeat fields win over status_result on overlap
+    (mode/channel reflect the detector), with scanner status merged underneath."""
+    hb = bridge.latest_status() or {}
+    sr = bridge.latest_result("status_result") or {}
+    status = {**sr, **hb}                            # heartbeat overrides on conflict
+    detections = [{
+        "type": d.get("type", ""),
+        "severity": d.get("severity", "info"),
+        "target": d.get("mac") or d.get("ssid")
+                  or (f"ch{d.get('channel')}" if d.get("channel") not in (None, "") else ""),
+        "title": d.get("title") or d.get("type", ""),
+        "detail": d.get("detail", ""),
+        "evidence": d.get("evidence", ""),
+        "timestamp": d.get("timestamp", ""),
+    } for d in (bridge.recent_detections() or []) if isinstance(d, dict)]
+    busy = str(sr.get("state", "")).lower() in _RUNNING_STATES
+    return {
+        "found": True,
+        "run_id": "", "started_at": "", "finished_at": "",
+        "workflow": "live", "source": getattr(config, "esp_serial_port", ""),
+        "alive": True, "busy": busy, "live": True,
+        "status": status,
+        "detections": detections,
+        "detections_count": len(detections),
+    }
+
+
+def esp_panel(config, bridge=None) -> dict:
+    """Panel view-model. When the serial bridge is live, source it in real time;
+    otherwise fall back to the newest ESP run from the store (unchanged)."""
+    if bridge is not None and bridge.is_alive():
+        return _bridge_panel(config, bridge)
     for run in history.load_all_runs(config):        # newest-first, skips malformed
         if not _is_esp_run(run):
             continue

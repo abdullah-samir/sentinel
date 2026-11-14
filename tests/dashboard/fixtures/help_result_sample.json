@@ -1,0 +1,29 @@
+{
+  "t": "help_result",
+  "ok": true,
+  "commands": [
+    "start",
+    "stop",
+    "status",
+    "diag",
+    "selftest",
+    "scan [1..200]",
+    "search [1..200]",
+    "ch [0..125|auto]",
+    "power [0..3]",
+    "en [1|2|both]",
+    "dwell [0..5000]",
+    "debug [0..4]",
+    "help"
+  ],
+  "modes": {
+    "r": "random bluetooth odd/even",
+    "w": "wifi",
+    "b": "ble advertising",
+    "u": "usb wireless",
+    "v": "video streaming",
+    "c": "rc toys/drones",
+    "f": "full spectrum",
+    "i": "ism band 2401-2483 MHz"
+  }
+}
