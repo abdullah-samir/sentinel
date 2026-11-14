@@ -14,6 +14,7 @@
 #include "config.h"
 #include "common.h"
 #include "out.h"
+#include "nrf_scanner.h"
 #include "sniffer.h"
 #include "detectors.h"
 #include "reporting.h"
@@ -149,9 +150,12 @@ void setup() {
         g_mode == MODE_CONNECTED ? "connected" : "sniffer",
         (unsigned)g_channel, g_hop ? "true" : "false", g_http ? "true" : "false");
     Out.println(buf);
+
+    nrfScannerBegin();
 }
 
 void loop() {
+    nrfScannerPoll();
     // 1. Drain captured frames and run the detectors (bounded per loop).
     FrameRecord rec;
     Detection dets[6];
