@@ -1,0 +1,29 @@
+[Unit]
+# Sentinel headless Wi-Fi provisioning — ROOT monitor + IPC service (Phase P1).
+# SHIPS DISABLED BY DEFAULT: the loop is a STRICT NO-OP until provisioning_enabled is
+# turned on in the dashboard (Settings → Network / Provisioning). Installing/enabling
+# this unit alone changes NOTHING on the Pi — it only observes the setting.
+Description=Sentinel Wi-Fi provisioning service (root; monitor + portal IPC)
+Documentation=file:/home/sentinel/sentinel/deploy/README.md
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+# Root is required to run nmcli changes and write NetworkManager dnsmasq config.
+# The unprivileged portal NEVER runs as root (see sentinel-portal.service).
+User=root
+WorkingDirectory=/home/sentinel/sentinel
+Environment=SENTINEL_ROOT=/home/sentinel/sentinel
+# Unix socket for the portal lives in /run; RuntimeDirectory makes /run/sentinel.
+RuntimeDirectory=sentinel
+Environment=SENTINEL_PROV_SOCKET=/run/sentinel/provisioning.sock
+ExecStart=/home/sentinel/sentinel/venv/bin/python -m core.provisioning_service
+Restart=on-failure
+RestartSec=5
+# FAIL-SAFE: on any stop/exit, remove the captive DNS snippet so NM shared DNS is
+# clean. The monitor's own cleanup tears the AP down and frees the interface.
+ExecStopPost=-/bin/rm -f /etc/NetworkManager/dnsmasq-shared.d/sentinel-captive.conf
+
+[Install]
+WantedBy=multi-user.target

@@ -5,9 +5,13 @@
 
 {% set notes = {'pwchanged':'Password changed.','badcurrent':'Current password is incorrect.',
   'tooshort':'New password must be at least 8 characters.','mismatch':'New passwords do not match.',
-  'saved':'Settings saved.','invalid':'Invalid value — not saved.'} %}
+  'saved':'Settings saved.','invalid':'Invalid value — not saved.',
+  'provsaved':'Provisioning settings saved.',
+  'provwarn':'Provisioning settings saved (with a warning — see the interface note).',
+  'provinvalid':'Provisioning settings invalid — not saved. Check the password (8–63 chars), interface and subnet.',
+  'readonly':'Read-only mode — change not saved.'} %}
 {% if msg and notes.get(msg) %}
-<div class="banner {{ 'err' if msg in ('badcurrent','tooshort','mismatch','invalid') else '' }}">{{ notes[msg] }}</div>
+<div class="banner {{ 'err' if msg in ('badcurrent','tooshort','mismatch','invalid','provinvalid','readonly') else ('warn' if msg == 'provwarn' else '') }}">{{ notes[msg] }}</div>
 {% endif %}
 
 <div class="panel">
@@ -59,6 +63,99 @@
       Privileged scan mode {% if pins.nmap_privileged %}<span class="muted">(env-pinned)</span>{% elif readonly %}<span class="muted">(read-only)</span>{% endif %}
       <span class="muted" style="font-size:12px">Allows the recon scans that need elevation (nmap SYN&nbsp;-sS, OS detection&nbsp;-O) by running nmap through the existing tightly-scoped sudo grant (nmap/iw/ip/airodump only — no root shell, no broad sudo, dashboard stays unprivileged). Off by default; privileged options are refused when this is off.</span></label>
     <button class="btn primary" type="submit" style="align-self:flex-start">Save config</button>
+  </form>
+</div>
+
+<div class="panel" id="provisioning">
+  <h2>Network / Provisioning <span class="pill" style="{{ 'color:#34D399;border-color:#1f5a4a' if prov.provisioning_enabled else '' }}">{{ 'ON' if prov.provisioning_enabled else 'OFF' }}</span></h2>
+  <p class="muted" style="font-size:12px;max-width:640px">
+    Headless Wi-Fi setup for when the Pi has no internet. <b>Ships disabled.</b> When
+    enabled <b>and the Pi is genuinely offline</b>, it raises a temporary Wi-Fi hotspot
+    whose captive portal lets you join a network and open the dashboard. It never touches
+    a working connection, never runs the hotspot and a client link at the same time, and
+    always falls back to the hotspot on failure. Configure it here <b>while online</b>; it
+    activates on a future offline event. Nothing here changes the Pi until you turn it on.
+  </p>
+  {% set poff = readonly %}
+  <form method="post" action="/settings/provisioning#provisioning"
+        style="display:flex;flex-direction:column;gap:12px;max-width:520px">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+
+    <label style="font-weight:600">
+      <input type="checkbox" name="provisioning_enabled" value="1"
+             {{ 'checked' if prov.provisioning_enabled }}
+             {{ 'disabled' if poff or not prov.ap_password_set }}>
+      Enable provisioning (master switch)
+      {% if not prov.ap_password_set %}<span class="muted">(set an AP password first)</span>{% endif %}
+    </label>
+
+    <label>Hotspot interface
+      <select name="ap_ifname" {{ 'disabled' if poff }}>
+        {% for name, i in prov_ifaces.items() %}
+          <option value="{{ name }}" {{ 'selected' if name == prov.ap_ifname }}
+                  {{ 'disabled' if not i.ap_capable }}>
+            {{ name }}{% if not i.ap_capable %} — not AP-capable{% elif i.reserved_reason %} — reserved{% endif %}</option>
+        {% endfor %}
+        {% if prov.ap_ifname not in prov_ifaces %}
+          <option value="{{ prov.ap_ifname }}" selected>{{ prov.ap_ifname }} (not detected now)</option>
+        {% endif %}
+      </select>
+      <span class="muted" style="font-size:12px">Onboard <span class="mono">wlan0</span> by default. The hotspot only runs while offline, so it won't disturb your uplink.</span></label>
+
+    <label>Hotspot name (SSID)
+      <input type="text" name="ap_ssid" value="{{ prov.ap_ssid }}" maxlength="32" {{ 'disabled' if poff }}></label>
+
+    <label>Hotspot password (WPA2, 8–63 chars)
+      <input type="password" name="ap_password" autocomplete="new-password" maxlength="63"
+             placeholder="{{ '•••••••• (set — leave blank to keep)' if prov.ap_password_set else 'required before enabling' }}"
+             {{ 'disabled' if poff }}>
+      <span class="muted" style="font-size:12px">Stored owner-only on the Pi; never shown back in full. Leave blank to keep the current one.</span></label>
+
+    <label><input type="checkbox" name="ap_hidden" value="1" {{ 'checked' if prov.ap_hidden }} {{ 'disabled' if poff }}>
+      Hidden SSID <span class="muted">(awkward for first-time setup — leave off)</span></label>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <label>Hotspot IP
+        <input type="text" name="ap_ip" value="{{ prov.ap_ip }}" maxlength="15"
+               pattern="[0-9.]*" style="width:140px" {{ 'disabled' if poff }}></label>
+      <label>Subnet /prefix
+        <input type="number" name="ap_prefix" value="{{ prov.ap_prefix }}" min="8" max="30"
+               style="width:90px" {{ 'disabled' if poff }}></label>
+    </div>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <label>Grace before hotspot (s)
+        <input type="number" name="grace_seconds" value="{{ prov.grace_seconds }}" min="5" max="3600"
+               style="width:110px" {{ 'disabled' if poff }}></label>
+      <label>Join timeout (s)
+        <input type="number" name="join_timeout" value="{{ prov.join_timeout }}" min="5" max="300"
+               style="width:110px" {{ 'disabled' if poff }}></label>
+      <label>Probe timeout (s)
+        <input type="number" name="probe_timeout" value="{{ prov.probe_timeout }}" min="1" max="60"
+               style="width:110px" {{ 'disabled' if poff }}></label>
+    </div>
+
+    <label>Connectivity probe URL
+      <input type="text" name="probe_url" value="{{ prov.probe_url }}" maxlength="200" {{ 'disabled' if poff }}>
+      <span class="muted" style="font-size:12px">A short request that confirms real internet (not just a link). Default returns HTTP 204.</span></label>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <label>Friendly hostname
+        <input type="text" name="friendly_hostname" value="{{ prov.friendly_hostname }}" maxlength="64"
+               pattern="[A-Za-z0-9.-]*" style="width:180px" {{ 'disabled' if poff }}></label>
+      <label>Dashboard port
+        <input type="number" name="dashboard_port" value="{{ prov.dashboard_port }}" min="1" max="65535"
+               style="width:110px" {{ 'disabled' if poff }}></label>
+    </div>
+
+    <label><input type="checkbox" name="show_dashboard_link" value="1" {{ 'checked' if prov.show_dashboard_link }} {{ 'disabled' if poff }}>
+      Show an “Open Dashboard” link on the portal</label>
+    <label><input type="checkbox" name="dashboard_on_ap" value="1" {{ 'checked' if prov.dashboard_on_ap }} {{ 'disabled' if poff }}>
+      Expose the dashboard on the hotspot
+      <span class="muted" style="font-size:12px">The dashboard currently binds localhost only, so the portal link is hidden by default. Tick this to <b>broaden its bind to all interfaces</b> — a conscious, reversible change — so you can reach it from a phone on the hotspot. Leave off if you only want Wi-Fi setup.</span></label>
+
+    {% if readonly %}<p class="muted" style="font-size:12px">Read-only mode — provisioning settings are locked.</p>{% endif %}
+    <button class="btn primary" type="submit" style="align-self:flex-start" {{ 'disabled' if poff }}>Save provisioning</button>
   </form>
 </div>
 

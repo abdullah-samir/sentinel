@@ -192,3 +192,57 @@ This deployment is **public + network-scan-capable + unattended**. Therefore:
   git-ignored — never commit them. `deploy/sentinel.env` is git-ignored too.
 - To take it offline fast: `sudo systemctl stop sentinel-tunnel.service` (kills the
   public URL) or `deploy/sentinel-ctl.sh safe` (keeps it up but view-only).
+
+---
+
+## Headless Wi-Fi provisioning + captive portal (Phase P1) — SHIPS DISABLED
+
+When the Pi has no internet, this can raise a temporary Wi-Fi hotspot whose captive
+portal lets you join a network or open the dashboard. It is **off by default** and
+gated behind a single persisted setting — installing or even enabling the systemd
+units changes nothing until you turn it on.
+
+**Configure it (while online):** dashboard → Settings → **Network / Provisioning**.
+Set an AP password (8–63 chars) first; the master switch unlocks once a password is
+set. All settings persist to `data/state/provisioning.json` (written `0600` — it holds
+the PSK).
+
+**Safety contract (enforced in code):**
+- Default OFF; the monitor service is a *strict no-op* while disabled (no network
+  action, not even a probe).
+- Runs only when genuinely offline (NM connectivity != full **and** a probe fails),
+  so it can never disturb a working connection — there is none when it acts.
+- Single radio: the AP and a client connection are **never up together**. Flow is
+  AP-down → join → (success: online, no AP / failure: client down, AP re-raised).
+- Never deactivates/modifies an active connection; never deletes a pre-existing
+  profile; only ever creates the dedicated `sentinel-ap` profile and the one network
+  you submit. Refuses to raise the AP on the default-route / SSH interface.
+- Hysteresis: AP rises only after offline persists past `grace_seconds`; it drops only
+  after internet is confirmed stable — flapping connectivity can't flap the AP.
+- Fail-safe: any error/timeout re-raises the AP; the device is never left with neither
+  internet nor an AP. Disabling while an AP is up tears it down.
+
+**Privilege model:** the root `sentinel-provisioning.service` owns all nmcli/NM-config
+actions and the monitor loop. The **unprivileged** `sentinel-portal.service` (bound to
+`ap_ip:80`, `CAP_NET_BIND_SERVICE`, never root) forwards only validated
+`{action, ssid, password}` to the root service over `/run/sentinel/provisioning.sock`;
+it never runs nmcli and never writes under `/etc/NetworkManager`. Submitted passwords
+are never logged.
+
+**Install the units (a conscious step; still inert until the setting is on):**
+```
+sudo cp deploy/systemd/sentinel-provisioning.service /etc/systemd/system/
+sudo cp deploy/systemd/sentinel-portal.service       /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now sentinel-provisioning.service sentinel-portal.service
+```
+
+**⚠ Known conflict on THIS Pi (discovery):** `lighttpd` currently binds `0.0.0.0:80`,
+which overlaps the portal's `ap_ip:80`. Free `:80` before the live test (e.g.
+`sudo systemctl disable --now lighttpd`) or the portal won't bind. The dashboard binds
+`127.0.0.1:8000` (localhost-only), so the portal's "Open Dashboard" link is hidden
+unless you tick **Expose the dashboard on the hotspot** (which broadens its bind — a
+conscious, reversible change).
+
+**The real end-to-end test is supervised** (Ethernet/monitor attached): it is NOT in
+the test suite, and the build never ran nmcli or raised an AP on the live Pi.

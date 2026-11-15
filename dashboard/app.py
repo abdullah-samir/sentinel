@@ -55,7 +55,9 @@ from dashboard import esp as esp_mod
 from dashboard import esp_control as esp_control_mod
 from dashboard import interfaces as interfaces_mod
 from dashboard import terminal as terminal_mod
+from dashboard import provisioning_discovery as prov_disc
 from dashboard import launcher, manage, settings as settings_mod
+from core import provisioning as prov_mod
 from reporting import history, risk, report_engine
 
 _EVENT_TOPICS = ("run.start", "step.start", "step.done", "step.skip",
@@ -696,6 +698,9 @@ def create_app(core_config: Optional[Config] = None,
             "status": bridge.latest_status(),
             "status_result": bridge.latest_result("status_result"),
             "scan_result": bridge.latest_result("scan_result"),
+            # server-built ACTIVE MODE panel seed; the page JS applies the same
+            # per-field merge (esp_control.merge_panel) to live frames.
+            "panel": esp_control_mod.scanner_panel(bridge.latest_result("status_result")),
             "alive": alive,
         }
         # Always render the full page; the toggle reflects `bridge_enabled` and the
@@ -1014,6 +1019,8 @@ def create_app(core_config: Optional[Config] = None,
                       info={"version": _version(), "modules": modules, "runs": runs,
                             "free_gb": round(free / 1e9, 1) if free >= 0 else "?"},
                       discovery=settings_mod.discovery_prefs(core_config),
+                      prov=prov_mod.redacted(prov_mod.load_provisioning(core_config)),
+                      prov_ifaces=prov_disc.ap_capable_interfaces(core_config),
                       msg=request.query_params.get("msg"))
 
     @app.post("/settings/password")
@@ -1069,6 +1076,50 @@ def create_app(core_config: Optional[Config] = None,
         except ValueError:
             return RedirectResponse("/settings?msg=invalid", status_code=303)
         return RedirectResponse("/settings?msg=saved", status_code=303)
+
+    @app.post("/settings/provisioning")
+    async def settings_provisioning(request: Request):
+        # Headless Wi-Fi provisioning settings (Phase P1). SHIPS DISABLED: this only
+        # persists config; nothing on the Pi changes until provisioning_enabled is
+        # turned on AND the device next goes offline. Auth + CSRF + readonly-gated.
+        if not current_user(request):
+            return login_redirect()
+        if dash_config.readonly:
+            return RedirectResponse("/settings?msg=readonly#provisioning", status_code=303)
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return HTMLResponse("CSRF validation failed.", status_code=403)
+
+        def checkbox(name: str) -> bool:
+            return form.get(name) in ("1", "on", "true")
+
+        updates = {
+            "provisioning_enabled": checkbox("provisioning_enabled"),
+            "ap_hidden": checkbox("ap_hidden"),
+            "show_dashboard_link": checkbox("show_dashboard_link"),
+            "dashboard_on_ap": checkbox("dashboard_on_ap"),
+        }
+        for key in ("ap_ifname", "ap_ssid", "ap_ip", "ap_prefix", "grace_seconds",
+                    "probe_url", "probe_timeout", "join_timeout", "friendly_hostname",
+                    "dashboard_port"):
+            if form.get(key) not in (None, ""):
+                updates[key] = form[key]
+        # The masked PSK field: a blank value keeps the stored secret (never resent).
+        pw = form.get("ap_password", "")
+        updates["ap_password"] = pw if pw else prov_mod.KEEP_SECRET
+
+        iface_info, shared = prov_disc.settings_discovery(core_config)
+        ok, errors, warnings, _ = prov_mod.save_provisioning(
+            core_config, updates,
+            iface_info=(iface_info or None), shared_subnets=shared)
+        if not ok:
+            log.info("provisioning settings rejected: %s", errors)
+            return RedirectResponse("/settings?msg=provinvalid#provisioning",
+                                    status_code=303)
+        log.info("provisioning settings saved user=%s enabled=%s",
+                 current_user(request), updates["provisioning_enabled"])
+        tag = "provwarn" if warnings else "provsaved"
+        return RedirectResponse(f"/settings?msg={tag}#provisioning", status_code=303)
 
     # --- JSON APIs (auth-required) ---------------------------------------
     @app.get("/api/runs")
