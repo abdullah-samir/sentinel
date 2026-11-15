@@ -146,6 +146,195 @@ def test_normalize_stream_item_shapes():
     assert obj == {"t": "scan_result", "modules": []} and '"scan_result"' in raw
 
 
+# --- humanize_frame (unit, against REAL fixtures) -------------------------
+def test_humanize_every_fixture():
+    h = espc.humanize_frame
+    assert "acknowledged" in h(_fixture("ack_sample.json"))
+    ce = h(_fixture("cmd_error_sample.json"))
+    assert ce.startswith("✗") and "unknown command" in ce
+    st = h(_fixture("status_result_sample.json"))
+    assert st.startswith("status:") and "standby" in st and "M1" in st and "both enabled" in st
+    assert "running" in h(_fixture("status_result_running_sample.json"))
+    sc = h(_fixture("scan_result_sample.json"))
+    assert sc.startswith("scan done") and "busiest ch 26" in sc    # uses esp_chart_series
+    assert h(_fixture("search_result_sample.json")).startswith("search done")
+    stf = h(_fixture("selftest_result_sample.json"))
+    assert "selftest ok" in stf and "M1 ready" in stf
+    assert "power → 2" in h(_fixture("config_result_sample.json"))
+    cs = h(_fixture("ctrl_result_start_sample.json"))
+    assert cs.startswith("▶ started") and "2/2" in cs
+    assert h(_fixture("ctrl_result_stop_sample.json")).startswith("■ stopped")
+    assert h(_fixture("diag_result_sample.json")).startswith("diag:")
+    assert h(_fixture("help_result_sample.json")).startswith("commands:")
+    assert h(_fixture("boot_sample.json")).startswith("booted:")
+    info = h(_fixture("info_sample.json"))
+    assert "ready" in info and "mode sniffer" in info
+    det = h(_fixture("detection_sample.json"))
+    assert "DETECTION" in det and "high" in det and "Deauth flood (per-source)" in det
+    assert h(_fixture("heartbeat_sample.json")).startswith("heartbeat:")
+
+
+def test_humanize_scan_no_activity_and_missing_fields():
+    assert "no activity detected" in espc.humanize_frame({"t": "scan_result", "modules": []})
+    # missing fields never crash, render "?" placeholders
+    assert espc.humanize_frame({"t": "status_result"}).startswith("status:")
+    assert espc.humanize_frame({"t": "ctrl_result", "cmd": "start"}).startswith("▶ started")
+
+
+def test_humanize_unknown_t_and_non_dict():
+    assert espc.humanize_frame({"t": "zzz_new", "x": 1}) == '{"t":"zzz_new","x":1}'
+    assert espc.humanize_frame({"no_t": 1}) == '{"no_t":1}'
+    assert espc.humanize_frame("[I] already human line") == "[I] already human line"
+
+
+# --- snapshot_log (unit) --------------------------------------------------
+def test_snapshot_log_humanizes_drops_heartbeat_keeps_obj():
+    class B:
+        def recent_logs(self):
+            return [
+                json.dumps(_fixture("boot_sample.json")),
+                json.dumps(_fixture("ctrl_result_start_sample.json")),
+                '{"t":"heartbeat","channel":6}',       # must be DROPPED
+                "[I] a plain human line",               # non-JSON passthrough, no obj
+            ]
+    entries = espc.snapshot_log(B())
+    texts = [e["text"] for e in entries]
+    assert not any("heartbeat" in t for t in texts)        # heartbeat dropped
+    assert any(t.startswith("booted:") for t in texts)
+    assert any(t.startswith("▶ started") for t in texts)
+    assert "[I] a plain human line" in texts
+    # JSON frames keep obj for the raw⇄pretty toggle; the plain line carries no obj
+    assert any("obj" in e for e in entries) and any("obj" not in e for e in entries)
+
+
+# --- run_state_of + scanner_panel (unit, from REAL status_result) ---------
+def test_run_state_of_mapping():
+    assert espc.run_state_of("running") == "running"
+    assert espc.run_state_of("standby") == "stopped"
+    assert espc.run_state_of("stopped") == "stopped"
+    assert espc.run_state_of("") == "idle"
+    assert espc.run_state_of(None) == "idle"
+    assert espc.run_state_of("weird") == "idle"
+
+
+def test_scanner_panel_from_status_result():
+    p = espc.scanner_panel(_fixture("status_result_sample.json"))
+    assert p["state"] == "standby" and p["run_state"] == "stopped"
+    assert p["power"] == 3 and p["dwell"] == 60                 # no permanent dash
+    assert p["enabled"] == "both"                               # raw radios flag
+    assert p["modules_ready"] == "0/2"                          # modules uninit -> 0 ready
+    assert p["channel"] == "auto"                               # lock == -1 -> auto
+    # chip + panel state come from the SAME status_result.state source
+    assert p["run_state"] == espc.run_state_of(p["state"])
+
+
+# --- merge_panel (unit): the live per-field panel model (section 2) --------
+def test_merge_panel_status_result_is_full_snapshot():
+    p = espc.merge_panel(espc._empty_panel(), _fixture("status_result_sample.json"))
+    assert p == espc.scanner_panel(_fixture("status_result_sample.json"))
+
+
+def test_merge_panel_config_result_partial_merge_keeps_other_fields():
+    seed = espc.scanner_panel(_fixture("status_result_sample.json"))  # power 3, both, auto
+    # a power config_result updates ONLY power; mode/enabled/channel/dwell untouched
+    p = espc.merge_panel(seed, _fixture("config_result_sample.json"))  # pa: 2
+    assert p["power"] == 2
+    assert p["mode"] == seed["mode"] and p["enabled"] == seed["enabled"]
+    assert p["dwell"] == seed["dwell"] and p["channel"] == seed["channel"]
+    # dwell config_result reports dwell_us; en reports enabled; ch reports lock/auto
+    p = espc.merge_panel(seed, {"t": "config_result", "cmd": "dwell", "dwell_us": 150})
+    assert p["dwell"] == 150 and p["power"] == seed["power"]
+    p = espc.merge_panel(seed, {"t": "config_result", "cmd": "en", "enabled": "m1"})
+    assert p["enabled"] == "m1"
+    p = espc.merge_panel(seed, {"t": "config_result", "cmd": "ch", "auto": False, "lock": 37})
+    assert p["channel"] == 37
+    p = espc.merge_panel(seed, {"t": "config_result", "cmd": "ch", "auto": True})
+    assert p["channel"] == "auto"
+
+
+def test_merge_panel_mode_alias_reflects_device_named_mode():
+    # a mode-alias whose config_result names the new mode -> panel flips to it,
+    # never guessed from the alias letter.
+    seed = espc.scanner_panel(_fixture("status_result_sample.json"))
+    p = espc.merge_panel(seed, {"t": "config_result", "cmd": "w", "mode": "wifi"})
+    assert p["mode"] == "wifi"
+
+
+def test_merge_panel_ctrl_result_updates_only_run_state():
+    seed = espc.scanner_panel(_fixture("status_result_sample.json"))
+    p = espc.merge_panel(seed, _fixture("ctrl_result_start_sample.json"))
+    assert p["run_state"] == "running" and p["state"] == "running"
+    assert p["power"] == seed["power"] and p["mode"] == seed["mode"]
+    p = espc.merge_panel(p, _fixture("ctrl_result_stop_sample.json"))
+    assert p["run_state"] == "stopped" and p["state"] == "standby"
+
+
+def test_merge_panel_tolerates_junk_and_is_pure():
+    seed = espc.scanner_panel(_fixture("status_result_sample.json"))
+    before = copy.deepcopy(seed)
+    assert espc.merge_panel(seed, "not a dict") == seed
+    assert espc.merge_panel(seed, {"t": "zzz"}) == seed
+    assert espc.merge_panel(None, {"t": "zzz"})["run_state"] == "idle"
+    assert seed == before                                      # input not mutated
+
+
+def test_merge_panel_mode_alias_config_humanized():
+    assert espc.humanize_frame(
+        {"t": "config_result", "cmd": "w", "mode": "wifi"}) == "✓ mode → wifi"
+
+
+def test_scanner_panel_running_and_missing_fields():
+    r = espc.scanner_panel(_fixture("status_result_running_sample.json"))
+    assert r["state"] == "running" and r["run_state"] == "running"
+    # tolerate a status_result with no power/dwell/enabled/modules (never crashes)
+    m = espc.scanner_panel({"t": "status_result", "state": "running"})
+    assert m["run_state"] == "running" and m["power"] is None and m["dwell"] is None
+    assert m["modules_ready"] == "" and m["modules"] == []
+    assert espc.scanner_panel("not a dict")["run_state"] == "idle"
+
+
+# --- nav label (section 5) ------------------------------------------------
+def test_nav_label_is_esp(tmp_path):
+    _, _, app = make_env(tmp_path, enabled=True)
+    app.state.esp_bridge = FakeBridge(alive=True)
+    c = TestClient(app)
+    login(c)
+    body = c.get("/esp/control").text
+    assert "<span>ESP</span>" in body and "<span>ESP sensor</span>" not in body
+
+
+# --- E5 layout: ACTIVE MODE header + serial-log-before-spectrum order -----
+def test_active_mode_header_and_layout_order(tmp_path):
+    _, _, app = make_env(tmp_path, enabled=True)
+    app.state.esp_bridge = FakeBridge(alive=True,
+                                      status_result=_fixture("status_result_sample.json"))
+    c = TestClient(app)
+    login(c)
+    body = c.get("/esp/control").text
+    # section 1: panel renamed away from "Scanner" to the Active Mode panel
+    assert "Active mode" in body and ">Scanner<" not in body
+    # section 4: the Serial log block renders BEFORE the spectrum block
+    i_log = body.find('id="esp-log"')
+    i_spec = body.find('id="esp-chart-title"')
+    assert i_log != -1 and i_spec != -1 and i_log < i_spec
+    # E5 scaffolding present (client features live-verified separately)
+    for marker in ('id="esp-run-readout"', 'id="esp-sync"', 'id="esp-toasts"',
+                   'id="esp-det-badge"', 'id="esp-picker"', 'id="esp-log-pause"',
+                   'id="esp-chart-live"'):
+        assert marker in body, marker
+
+
+def test_control_page_seed_carries_panel(tmp_path):
+    _, _, app = make_env(tmp_path, enabled=True)
+    app.state.esp_bridge = FakeBridge(alive=True,
+                                      status_result=_fixture("status_result_sample.json"))
+    c = TestClient(app)
+    login(c)
+    body = c.get("/esp/control").text
+    # server-side scanner_panel seeds the page (section 2)
+    assert '"panel"' in body and '"run_state"' in body
+
+
 # --- catalog_from_logs (unit) ---------------------------------------------
 def test_catalog_from_logs_prefers_firmware_help_result():
     hr = _fixture("help_result_sample.json")
@@ -361,15 +550,17 @@ def test_stream_requires_auth(tmp_path):
     assert TestClient(app).get("/esp/stream").status_code == 401
 
 
-def test_stream_snapshot_then_normalized_frames(tmp_path):
-    # The async generator is driven directly: TestClient buffers streaming
-    # responses, so it cannot read an open-ended SSE stream incrementally.
+def test_stream_frame_vs_line_contract(tmp_path):
+    # Driven directly (TestClient buffers streaming responses). New E4 contract:
+    # a JSON frame with a `t` -> ONE "frame" (t/obj/text/heartbeat), never a "line";
+    # anything else -> "line". Heartbeats are frames flagged heartbeat (kept out of
+    # the log by the client).
     frames = [
-        ("line", '{"t":"heartbeat","channel":6,"frames_seen":5}'),  # JSON -> line+frame
-        ("line", "[I] plain boot noise"),                           # non-JSON -> line only
-        ("line", '{"t":"weird","x":1}'),                           # unknown t -> line+frame
-        "raw-bare-string",                                          # bare str -> line only
-        {"t": "scan_result", "modules": []},                       # dict item -> line+frame
+        ("line", '{"t":"heartbeat","channel":6,"frames_seen":5}'),  # -> frame (heartbeat)
+        ("line", "[I] plain boot noise"),                           # non-JSON -> line
+        ("line", '{"t":"weird","x":1}'),                           # unknown t -> frame (compact)
+        "raw-bare-string",                                          # bare str -> line
+        {"t": "scan_result", "passes": 1, "modules": []},          # dict item -> frame
     ]
     fake = FakeBridge(frames=frames, logs=["seed-log-a"], status={"channel": 6})
 
@@ -377,7 +568,7 @@ def test_stream_snapshot_then_normalized_frames(tmp_path):
         gen = espc.esp_stream_events(fake, idle_timeout=0.05)
         out = []
         try:
-            for _ in range(9):           # snapshot + 5 line + 3 frame = 9 yields, no block
+            for _ in range(6):           # snapshot + 3 frame + 2 line = 6 yields, no block
                 out.append(await gen.__anext__())
         finally:
             await gen.aclose()           # runs the finally -> remove_listener
@@ -387,8 +578,13 @@ def test_stream_snapshot_then_normalized_frames(tmp_path):
     body = "".join(out)
 
     assert out[0].startswith("event: snapshot") and "seed-log-a" in out[0]
-    assert body.count("event: line") == 5        # every item yields a line
-    assert body.count("event: frame") == 3       # only the 3 JSON-object items
+    assert body.count("event: frame") == 3       # heartbeat + weird + scan_result
+    assert body.count("event: line") == 2        # only the 2 non-JSON items
     assert "plain boot noise" in body and "raw-bare-string" in body
-    assert '"t": "weird"' in body                # unknown t still streamed as a frame
+    # heartbeat is a FRAME flagged heartbeat, not a log line
+    assert '"heartbeat": true' in body and '"t": "heartbeat"' in body
+    # unknown t -> frame whose humanized text is compact JSON
+    assert '"t": "weird"' in body and r'{\"t\":\"weird\",\"x\":1}' in body
+    # known frame -> humanized text
+    assert "scan done" in body
     assert fake.listeners == []                  # deregistered on close

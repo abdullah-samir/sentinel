@@ -1,0 +1,11 @@
+{
+  "t": "detection",
+  "type": "deauth_flood_src",
+  "severity": "high",
+  "mac": "DE:AD:BE:EF:00:11",
+  "ssid": "",
+  "channel": 6,
+  "uptime_ms": 48213,
+  "evidence": "142 deauth frames in 1s from DE:AD:BE:EF:00:11",
+  "detections_total": 1
+}

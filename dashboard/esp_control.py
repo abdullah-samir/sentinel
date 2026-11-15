@@ -114,6 +114,226 @@ def esp_chart_series(scan_result: Any) -> list[dict]:
     return [{"mhz": k, "value": agg[k]} for k in sorted(agg)]
 
 
+# Human titles for the detector's five alert types (matches plugins/blue/esp_sensor).
+_DETECTION_TITLES = {
+    "deauth_flood_src": "Deauth flood (per-source)",
+    "deauth_flood_aggregate": "Deauth flood (aggregate)",
+    "beacon_flood": "Beacon flood",
+    "beacon_ssid_spam": "Beacon SSID spam",
+    "evil_twin": "Evil twin (duplicate SSID)",
+}
+
+
+def _modules_brief(obj: dict) -> str:
+    out = []
+    for m in obj.get("modules", []) or []:
+        if isinstance(m, dict):
+            st = m.get("state") or ("ok" if m.get("ok") else "?")
+            out.append(f"M{m.get('id', '?')} {st}")
+    return ", ".join(out)
+
+
+def _scan_summary(obj: dict, kind: str) -> str:
+    # Reuse esp_chart_series so the flatten logic lives in one place; ch == mhz-2400.
+    series = esp_chart_series(obj)
+    passes = obj.get("passes", "?")
+    if not series:
+        return f"{kind} done: {passes} pass(es), no activity detected"
+    peak = max(series, key=lambda p: p["value"])
+    return (f"{kind} done: {passes} pass(es), {len(series)} channel(s) active, "
+            f"busiest ch {peak['mhz'] - 2400} ({peak['value']} hits)")
+
+
+def humanize_frame(obj: Any) -> str:
+    """One concise human sentence for a known frame; compact single-line JSON for an
+    unknown/missing-`t` frame (so new commands stay visible with zero code change);
+    a non-dict (already-human log / non-JSON) is passed through. Never raises."""
+    if not isinstance(obj, dict):
+        return str(obj)
+    t = obj.get("t")
+    try:
+        if t == "ack":
+            return f"✓ {obj.get('cmd', '?')} acknowledged"
+        if t == "cmd_error":
+            msg = obj.get("msg") or obj.get("error") or "error"
+            cmd = obj.get("cmd")
+            return f"✗ {msg}" + (f" (cmd: {cmd})" if cmd else "")
+        if t == "heartbeat":                     # never logged, humanized for tests
+            return (f"heartbeat: {obj.get('mode', '?')}, ch {obj.get('channel', '?')}, "
+                    f"{obj.get('frames_seen', '?')} frames, "
+                    f"{obj.get('detections_total', '?')} detections")
+        if t == "status_result":
+            mode = obj.get("mode_name") or obj.get("mode", "?")
+            head = (f"status: {obj.get('state', '?')}, mode {mode}, "
+                    f"power {obj.get('pa', '?')}, dwell {obj.get('dwell', '?')}, "
+                    f"{obj.get('enabled', '?')} enabled")
+            mb = _modules_brief(obj)
+            return head + (f"; {mb}" if mb else "")
+        if t == "diag_result":
+            return (f"diag: {obj.get('state', '?')}, up {obj.get('uptime_s', '?')}s, "
+                    f"heap {obj.get('free_heap', '?')}, power {obj.get('pa', '?')}, "
+                    f"dwell {obj.get('dwell', '?')}")
+        if t == "scan_result":
+            return _scan_summary(obj, "scan")
+        if t == "search_result":
+            return _scan_summary(obj, "search")
+        if t == "selftest_result":
+            mb = _modules_brief(obj)
+            return ("selftest " + ("ok" if obj.get("ok") else "issues")
+                    + (f": {mb}" if mb else ""))
+        if t == "config_result":
+            cmd = obj.get("cmd", "?")
+            if "mode" in obj:                         # a mode-alias naming its mode
+                return f"✓ mode → {obj.get('mode')}"
+            if cmd == "ch":
+                return "✓ channel " + ("auto" if obj.get("auto")
+                                       else f"locked to {obj.get('lock', '?')}")
+            if cmd == "power":
+                return f"✓ power → {obj.get('pa', '?')}"
+            if cmd == "en":
+                return f"✓ radios enabled → {obj.get('enabled', '?')}"
+            if cmd == "dwell":
+                return f"✓ dwell → {obj.get('dwell_us', '?')} µs"
+            if cmd == "debug":
+                return f"✓ debug verbosity → {obj.get('verbosity', '?')}"
+            return f"✓ {cmd} updated"
+        if t == "ctrl_result":
+            cmd = obj.get("cmd", "?")
+            if cmd == "start":
+                return (f"▶ started ({obj.get('active', '?')}/{obj.get('total', '?')} "
+                        f"modules active)")
+            if cmd == "stop":
+                return "■ stopped" + (f" — {obj.get('msg')}" if obj.get("msg") else "")
+            return f"✓ {cmd}: {obj.get('state', '?')}"
+        if t == "detection":
+            title = _DETECTION_TITLES.get(obj.get("type"), obj.get("type", "detection"))
+            where = obj.get("mac") or obj.get("ssid") or ""
+            ch = obj.get("channel")
+            loc = ((f" {where}" if where else "")
+                   + (f" ch{ch}" if ch not in (None, "") else ""))
+            ev = obj.get("evidence", "")
+            return (f"⚠ DETECTION [{obj.get('severity', '?')}] {title}{loc}"
+                    + (f": {ev}" if ev else ""))
+        if t == "help_result":
+            return "commands: " + ", ".join(str(c) for c in (obj.get("commands") or []))
+        if t == "boot":
+            return (f"booted: {obj.get('sensor', 'esp')} — "
+                    f"{obj.get('note', '')}").rstrip(" —")
+        if t == "info":
+            extra = []
+            if obj.get("mode") is not None:
+                extra.append(f"mode {obj['mode']}")
+            if obj.get("channel") is not None:
+                extra.append(f"ch {obj['channel']}")
+            return (obj.get("msg", "info")
+                    + (f" ({', '.join(extra)})" if extra else ""))
+        if t == "error":
+            return f"⚠ {obj.get('msg') or obj.get('error') or 'error'}"
+    except Exception:  # noqa: BLE001 — a humanizer must never raise
+        pass
+    return json.dumps(obj, separators=(",", ":"))   # unknown/missing t -> compact JSON
+
+
+def snapshot_log(bridge) -> list[dict]:
+    """Rebuild the initial log the SAME way the live stream renders frames: humanize
+    known frames, compact-JSON unknowns, pass non-JSON through; DROP heartbeats.
+    Entries are {text, obj?} so the client can reveal the raw JSON per line."""
+    entries: list[dict] = []
+    for line in list(bridge.recent_logs())[-200:]:
+        try:
+            obj = json.loads(line)
+        except (ValueError, TypeError):
+            obj = None
+        if isinstance(obj, dict):
+            if obj.get("t") == "heartbeat":
+                continue
+            entries.append({"text": humanize_frame(obj), "obj": obj})
+        else:
+            entries.append({"text": line if isinstance(line, str) else str(line)})
+    return entries
+
+
+def run_state_of(state: Any) -> str:
+    """Normalize a status_result/ctrl_result `state` to one of running/stopped/idle.
+    The run-state chip and the panel 'state' field both go through this ONE mapping
+    (server + mirrored in the page JS) so they can never disagree."""
+    s = str(state or "").lower()
+    if s == "running":
+        return "running"
+    if s in ("standby", "stopped"):
+        return "stopped"
+    return "idle"
+
+
+_PANEL_FIELDS = ("run_state", "state", "mode", "enabled", "power", "dwell",
+                 "channel", "modules_ready", "modules")
+
+
+def _empty_panel() -> dict:
+    return {"run_state": "idle", "state": "", "mode": "", "enabled": "",
+            "power": None, "dwell": None, "channel": "", "modules_ready": "", "modules": []}
+
+
+def scanner_panel(status_result: Any) -> dict:
+    """ACTIVE MODE panel view-model (the seed) from a REAL status_result. state/mode
+    come straight from the frame; 'enabled' is the firmware radios flag and
+    'modules_ready' is how many modules are healthy (from modules[]); power/dwell are
+    the reported pa/dwell; channel is 'auto' when locked to -1 else the lock value.
+    power/dwell are None when absent (never a permanent dash — once a status_result
+    arrives these populate). Tolerant of missing/extra fields; the page JS and
+    merge_panel() apply the same per-field mapping live."""
+    if not isinstance(status_result, dict):
+        return _empty_panel()
+    mods = [m for m in (status_result.get("modules") or []) if isinstance(m, dict)]
+    ready = sum(1 for m in mods if m.get("state") == "ready"
+                or m.get("bus") == "up" or m.get("ok") is True)
+    lock = status_result.get("lock")
+    return {
+        "run_state": run_state_of(status_result.get("state")),
+        "state": status_result.get("state", ""),
+        "mode": status_result.get("mode_name") or status_result.get("mode", ""),
+        "enabled": "" if status_result.get("enabled") is None else str(status_result.get("enabled")),
+        "power": status_result.get("pa"),
+        "dwell": status_result.get("dwell"),
+        "channel": "auto" if lock in (-1, None) else lock,
+        "modules_ready": f"{ready}/{len(mods)}" if mods else "",
+        "modules": mods,
+    }
+
+
+def merge_panel(model: Any, frame: Any) -> dict:
+    """Last-writer-wins per-field merge of ONE live frame into the ACTIVE MODE panel
+    model. status_result replaces the whole snapshot; ctrl_result updates run/state;
+    config_result updates only the field(s) it reports (power←pa, dwell←dwell_us,
+    enabled←enabled, channel←auto/lock, mode←mode). Reflects exactly what the device
+    reports — alias semantics are never guessed. The page JS mirrors this. Never
+    raises. Returns a new dict."""
+    out = dict(model) if isinstance(model, dict) else _empty_panel()
+    for k in _PANEL_FIELDS:
+        out.setdefault(k, _empty_panel()[k])
+    if not isinstance(frame, dict):
+        return out
+    t = frame.get("t")
+    if t == "status_result":
+        out.update(scanner_panel(frame))          # authoritative full snapshot
+    elif t == "ctrl_result":
+        if "state" in frame:
+            out["state"] = frame.get("state", out["state"])
+            out["run_state"] = run_state_of(frame.get("state"))
+    elif t == "config_result":
+        if "pa" in frame:
+            out["power"] = frame["pa"]
+        if "dwell_us" in frame:
+            out["dwell"] = frame["dwell_us"]
+        if "enabled" in frame:
+            out["enabled"] = str(frame["enabled"])
+        if "mode" in frame:                        # a mode-alias that names its mode
+            out["mode"] = frame["mode"]
+        if frame.get("cmd") == "ch":
+            out["channel"] = "auto" if frame.get("auto") else frame.get("lock")
+    return out
+
+
 def normalize_stream_item(item: Any) -> tuple[str, Optional[dict]]:
     """Map one bridge listener item to (raw_text, obj?) for the SSE route.
       - a str                 -> raw=str; json.loads -> obj if it's a dict
@@ -145,17 +365,18 @@ def stream_snapshot(bridge) -> dict:
         "status": bridge.latest_status(),
         "status_result": bridge.latest_result("status_result"),
         "scan_result": bridge.latest_result("scan_result"),
-        "logs": list(bridge.recent_logs())[-200:],
+        "logs": snapshot_log(bridge),            # humanized, heartbeat-free, {text, obj?}
         "alive": bridge.is_alive(),
     }
 
 
 async def esp_stream_events(bridge, *, idle_timeout: float = 15.0):
     """Async SSE generator for /esp/stream. Registers a bounded listener BEFORE the
-    snapshot, then for each bridge item emits sse('line', raw) always and, when the
-    item is a JSON object with a 't', also sse('frame', obj). Idle beats send a
-    'tick'. Always deregisters in finally. Kept at module scope so it is unit-tested
-    directly (TestClient buffers streaming responses, so it can't drive it)."""
+    snapshot. Contract: a JSON frame with a `t` -> sse('frame', {t, obj, text, heartbeat})
+    (heartbeat frames are flagged so the client keeps them OUT of the log); anything
+    else (non-JSON, or JSON with no `t`) -> sse('line', raw). Idle beats send a 'tick'.
+    Always deregisters in finally. Kept at module scope so it is unit-tested directly
+    (TestClient buffers streaming responses, so it can't drive it)."""
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
     bridge.add_listener(loop, queue)
@@ -168,9 +389,12 @@ async def esp_stream_events(bridge, *, idle_timeout: float = 15.0):
                 yield sse("tick", {"alive": bridge.is_alive()})
                 continue
             raw, obj = normalize_stream_item(item)
-            yield sse("line", raw)
-            if isinstance(obj, dict) and "t" in obj:
-                yield sse("frame", obj)
+            if isinstance(obj, dict) and obj.get("t"):
+                t = obj["t"]
+                yield sse("frame", {"t": t, "obj": obj, "text": humanize_frame(obj),
+                                    "heartbeat": t == "heartbeat"})
+            else:
+                yield sse("line", raw)
     finally:
         bridge.remove_listener(loop, queue)
 

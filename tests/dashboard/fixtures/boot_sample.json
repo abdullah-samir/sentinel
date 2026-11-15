@@ -1,0 +1,6 @@
+{
+  "t": "boot",
+  "sensor": "sentinel-esp32-s3",
+  "role": "wifi-attack-detection",
+  "note": "defensive/lab-only; detection only, never transmits"
+}

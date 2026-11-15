@@ -1,0 +1,7 @@
+{
+  "t": "ctrl_result",
+  "cmd": "stop",
+  "ok": true,
+  "state": "standby",
+  "msg": "carriers stopped"
+}

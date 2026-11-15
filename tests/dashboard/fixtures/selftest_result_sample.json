@@ -1,0 +1,24 @@
+{
+  "t": "selftest_result",
+  "modules": [
+    {
+      "id": 1,
+      "name": "module-1",
+      "ok": true,
+      "state": "ready",
+      "status": "ok",
+      "ch": 45,
+      "freq": 2445
+    },
+    {
+      "id": 2,
+      "name": "module-2",
+      "ok": true,
+      "state": "ready",
+      "status": "ok",
+      "ch": 45,
+      "freq": 2445
+    }
+  ],
+  "ok": true
+}

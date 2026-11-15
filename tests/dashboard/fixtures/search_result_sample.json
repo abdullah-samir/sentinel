@@ -1,0 +1,43 @@
+{
+  "t": "search_result",
+  "mode": "r",
+  "mode_name": "random bluetooth odd/even",
+  "passes": 1,
+  "dwell_us": 220,
+  "channels_total": 80,
+  "modules": [
+    {
+      "id": 1,
+      "name": "module-1",
+      "ok": true,
+      "status": "ok",
+      "active_count": 3,
+      "hits": [
+        {
+          "ch": 3,
+          "freq": 2403,
+          "hits": 1
+        },
+        {
+          "ch": 42,
+          "freq": 2442,
+          "hits": 1
+        },
+        {
+          "ch": 77,
+          "freq": 2477,
+          "hits": 1
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "module-2",
+      "ok": true,
+      "status": "ok",
+      "active_count": 0,
+      "hits": []
+    }
+  ],
+  "ok": true
+}

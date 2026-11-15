@@ -1,0 +1,8 @@
+{
+  "t": "ctrl_result",
+  "cmd": "start",
+  "ok": true,
+  "state": "running",
+  "active": 2,
+  "total": 2
+}

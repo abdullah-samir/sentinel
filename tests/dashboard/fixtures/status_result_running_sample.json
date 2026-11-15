@@ -1,0 +1,34 @@
+{
+  "t": "status_result",
+  "ok": true,
+  "state": "running",
+  "mode": "r",
+  "mode_name": "random bluetooth odd/even",
+  "pa": 2,
+  "dwell": 100,
+  "hops": 47430,
+  "lock": -1,
+  "enabled": "both",
+  "modules": [
+    {
+      "id": 1,
+      "name": "module-1",
+      "en": true,
+      "state": "running",
+      "status": "ok",
+      "ch": 65,
+      "freq": 2465,
+      "bus": "up"
+    },
+    {
+      "id": 2,
+      "name": "module-2",
+      "en": true,
+      "state": "running",
+      "status": "ok",
+      "ch": 32,
+      "freq": 2432,
+      "bus": "up"
+    }
+  ]
+}

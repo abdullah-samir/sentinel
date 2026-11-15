@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}ESP control{% endblock %}
+{% block title %}ESP{% endblock %}
 {% block content %}
 {% set controls_off = readonly or not bridge_enabled %}
 <h1>ESP live control</h1>
@@ -51,42 +51,72 @@
 
 <script type="application/json" id="esp-seed">{{ seed | tojson }}</script>
 
-<!-- STATUS STRIP ------------------------------------------------------- -->
-<div class="cards" id="esp-strip">
-  <div class="card">
-    <div class="n" id="esp-live" style="color:{{ '#34D399' if alive else '#FF9B3D' }}">
-      {{ 'ALIVE' if alive else 'SILENT' }}</div>
-    <div class="l">sensor</div>
+<!-- RUN-STATE + RUNNING READOUT + LIVE HEARTBEAT WIDGET ----------------- -->
+<div class="esp-top-row">
+  <div class="panel esp-run-panel">
+    <div class="esp-run-head">
+      <h2>Run state</h2>
+      <span id="esp-det-badge" class="esp-det-badge" style="display:none" title="attack detections this session">
+        ⚠ detections <b id="esp-det-count">0</b></span>
+    </div>
+    <div id="esp-runchip" class="esp-runchip idle">Idle</div>
+    <div id="esp-run-readout" class="esp-run-readout" style="display:none">
+      <div class="esp-run-mode">● Running — <b id="esp-run-mode" class="mono">—</b></div>
+      <div class="esp-run-args muted mono" id="esp-run-args">—</div>
+      <div class="esp-run-elapsed">elapsed <b id="esp-run-elapsed" class="mono">0:00</b></div>
+    </div>
+    <div class="muted esp-run-hint" id="esp-run-hint">press <span class="mono">start</span> / <span class="mono">stop</span> to toggle the carriers</div>
   </div>
-  <div class="card"><div class="n" id="esp-mode">—</div><div class="l">detector mode</div></div>
-  <div class="card"><div class="n" id="esp-channel">—</div><div class="l">channel</div></div>
-  <div class="card"><div class="n" id="esp-frames">—</div><div class="l">frames seen</div></div>
-  <div class="card"><div class="n" id="esp-dropped">—</div><div class="l">dropped</div></div>
-  <div class="card"><div class="n" id="esp-dets">—</div><div class="l">detections total</div></div>
+
+  <div class="panel esp-hb-panel">
+    <h2>Live</h2>
+    <div class="esp-hb-row">
+      <span id="esp-hb-dot" class="hb-dot stale" title="heartbeat"></span>
+      <svg id="hb-spark" class="hb-spark" viewBox="0 0 160 34" preserveAspectRatio="none"
+           role="img" aria-label="frames/interval sparkline"></svg>
+    </div>
+    <div class="esp-hb-nums">
+      <span>uptime <b id="esp-uptime" class="mono">—</b></span>
+      <span>mode <b id="esp-mode" class="mono">—</b></span>
+      <span>ch <b id="esp-channel" class="mono">—</b></span>
+      <span>frames <b id="esp-frames" class="mono">—</b></span>
+      <span>dropped <b id="esp-dropped" class="mono">—</b></span>
+      <span>detections <b id="esp-dets" class="mono">—</b></span>
+    </div>
+    <div class="muted esp-hb-sub" id="esp-hb-sub">frames/5 s interval · greys out if no heartbeat for 15 s</div>
+  </div>
 </div>
 
+<!-- ACTIVE MODE PANEL --------------------------------------------------- -->
 <div class="panel">
-  <h2>Scanner</h2>
+  <div class="esp-am-head">
+    <h2>Active mode</h2>
+    <span id="esp-sync" class="esp-sync" style="display:none">syncing…</span>
+  </div>
   <div class="esp-kv">
     <span>state <b id="esp-state" class="mono">—</b></span>
     <span>mode <b id="esp-smode" class="mono">—</b></span>
-    <span>enabled <b id="esp-enabled" class="mono">—</b></span>
+    <span>radios <b id="esp-enabled" class="mono">—</b></span>
     <span>power <b id="esp-power" class="mono">—</b></span>
     <span>dwell <b id="esp-dwell" class="mono">—</b></span>
+    <span>channel <b id="esp-pchannel" class="mono">—</b></span>
   </div>
   <div id="esp-modules" class="esp-modules-grid"></div>
+  <div class="muted esp-panel-hint" id="esp-panel-hint"></div>
 </div>
 
-<!-- SPECTRUM CHART ----------------------------------------------------- -->
+<!-- SERIAL LOG (moved above the spectrum) ------------------------------- -->
 <div class="panel">
-  <h2>2.4 GHz spectrum — last scan</h2>
-  <div id="esp-chart-wrap">
-    <svg id="esp-chart" viewBox="0 0 640 220" preserveAspectRatio="none"
-         role="img" aria-label="2.4 GHz spectrum"></svg>
+  <div class="esp-log-head">
+    <h2>Serial log <span class="muted esp-log-hint">(human-readable · click a line for raw JSON · heartbeats shown in “Live” above)</span></h2>
+    <div class="esp-log-tools">
+      <button id="esp-log-pause" class="btn sm" type="button">Autoscroll: on</button>
+      <button id="esp-log-jump" class="btn sm" type="button" style="display:none">new ↓</button>
+      <button id="esp-log-clear" class="btn sm" type="button">Clear log</button>
+      <label class="esp-pretty-toggle"><input id="esp-pretty-chk" type="checkbox"> raw JSON</label>
+    </div>
   </div>
-  <div class="muted esp-chart-empty" id="esp-chart-empty">
-    Run <span class="mono">scan</span> to populate the spectrum.
-  </div>
+  <div id="esp-log" class="esp-log mono" aria-live="polite"></div>
 </div>
 
 <!-- COMMAND CONSOLE ---------------------------------------------------- -->
@@ -94,8 +124,18 @@
   <h2>Command console</h2>
   <form id="esp-cmd-form" autocomplete="off">
     <div class="esp-console-row">
+      <div class="esp-picker-wrap">
+        <button id="esp-picker-btn" class="btn sm" type="button"
+                aria-haspopup="listbox" aria-expanded="false">Commands ▾</button>
+        <div id="esp-picker" class="esp-picker" role="listbox" style="display:none">
+          <input id="esp-picker-search" class="esp-input mono" type="text"
+                 placeholder="filter commands…" aria-label="filter commands">
+          <div id="esp-picker-list" class="esp-picker-list"></div>
+        </div>
+      </div>
       <input id="esp-cmd-input" class="esp-input mono" type="text" maxlength="120"
-             placeholder="type any command, e.g. scan 5" {{ 'disabled' if controls_off }}>
+             placeholder="type any command, e.g. scan 5 (↑/↓ for history)"
+             {{ 'disabled' if not bridge_enabled }}>
       <button id="esp-send" class="btn primary" type="submit" {{ 'disabled' if controls_off }}>Send</button>
     </div>
   </form>
@@ -126,16 +166,31 @@
   <div class="muted esp-catalog" id="esp-catalog"></div>
 </div>
 
-<!-- LIVE LOG ----------------------------------------------------------- -->
+<!-- SPECTRUM CHART + EXPLANATION (moved to bottom) --------------------- -->
 <div class="panel">
-  <h2>Serial log</h2>
-  <div id="esp-log" class="esp-log mono" aria-live="polite"></div>
+  <h2 id="esp-chart-title">2.4 GHz spectrum — last scan
+    <span id="esp-chart-live" class="esp-live-badge" style="display:none">live</span></h2>
+  <p class="muted esp-chart-caption">
+    X = 2.4 GHz channels (MHz); bar height = activity (hits detected during the scan).
+    The <span class="esp-leg-wifi">1 / 6 / 11</span> markers are common Wi-Fi channel
+    centers — taller bars there mean Wi-Fi congestion. Bars combine both radios per
+    channel. Flat = quiet.
+  </p>
+  <div id="esp-chart-wrap">
+    <svg id="esp-chart" viewBox="0 0 640 220" preserveAspectRatio="none"
+         role="img" aria-label="2.4 GHz spectrum"></svg>
+  </div>
+  <div class="esp-scan-read" id="esp-scan-read">Run <span class="mono">scan</span> to populate the spectrum.</div>
+  <div class="muted esp-scan-meta" id="esp-scan-meta"></div>
 </div>
+
+<!-- TOASTS -------------------------------------------------------------- -->
+<div id="esp-toasts" class="esp-toasts" aria-live="polite" aria-atomic="false"></div>
 
 <style>
   .esp-warn{border-color:var(--warn);color:var(--ink)}
-  .esp-toggle-panel{margin-bottom:18px}
-  .esp-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .esp-toggle-panel{margin-bottom:16px}
+  .esp-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
   .esp-toggle-title{font-weight:600}
   .esp-toggle-sub{margin-top:3px;font-size:13px}
   .esp-toggle-msg:empty{display:none}
@@ -144,7 +199,41 @@
     font-weight:700;letter-spacing:.06em;vertical-align:middle}
   .esp-pill.on{background:rgba(52,211,153,.16);color:#34D399;border:1px solid #1f5a4a}
   .esp-pill.off{background:rgba(126,140,163,.14);color:var(--muted);border:1px solid var(--border)}
-  .esp-kv{display:flex;flex-wrap:wrap;gap:8px 22px;margin-bottom:12px;color:var(--ink-dim);font-size:13px}
+  .esp-top-row{display:grid;grid-template-columns:minmax(220px,1fr) minmax(280px,2fr);gap:14px;margin-bottom:20px}
+  .esp-run-panel,.esp-hb-panel{margin-bottom:0}
+  .esp-run-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .esp-run-head h2{margin:0}
+  .esp-det-badge{font-size:12px;font-weight:700;color:#FF9B3D;background:rgba(255,155,61,.12);
+    border:1px solid #5b3a1f;border-radius:999px;padding:2px 9px}
+  .esp-det-badge b{color:#FF9B3D}
+  .esp-runchip{display:inline-block;font-family:var(--font-display);font-size:20px;font-weight:700;
+    padding:8px 16px;border-radius:var(--r-pill);letter-spacing:.01em;border:1px solid var(--border);margin-top:10px}
+  .esp-runchip.run{background:rgba(52,211,153,.14);color:#34D399;border-color:#1f5a4a}
+  .esp-runchip.stop{background:rgba(255,155,61,.12);color:#FF9B3D;border-color:#5b3a1f}
+  .esp-runchip.idle{background:var(--surface-3);color:var(--muted)}
+  .esp-run-readout{margin-top:12px;padding:10px 12px;border:1px solid #1f5a4a;border-radius:var(--r-sm);
+    background:rgba(52,211,153,.06)}
+  .esp-run-readout .esp-run-mode{font-size:14px;color:var(--ink)}
+  .esp-run-args{font-size:12px;margin:4px 0}
+  .esp-run-elapsed{font-size:13px;color:var(--ink-dim)}
+  .esp-run-elapsed b{color:var(--ink);font-size:15px}
+  .esp-run-hint{margin-top:10px;font-size:12px}
+  .esp-hb-row{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  .hb-dot{width:14px;height:14px;border-radius:50%;flex:0 0 auto;background:#34D399;
+    box-shadow:0 0 10px rgba(52,211,153,.6)}
+  .hb-dot.stale{background:#5b6472;box-shadow:none}
+  .hb-dot.beat{animation:hbpulse .5s var(--ease)}
+  @keyframes hbpulse{0%{transform:scale(1)}30%{transform:scale(1.7)}100%{transform:scale(1)}}
+  .hb-spark{flex:1;height:34px;min-width:0}
+  .esp-hb-nums{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:var(--ink-dim)}
+  .esp-hb-nums b{color:var(--ink)}
+  .esp-hb-sub{margin-top:8px;font-size:11px}
+  .esp-am-head{display:flex;align-items:center;gap:10px}
+  .esp-am-head h2{margin:0}
+  .esp-sync{font-size:11px;font-weight:600;color:var(--cyan);background:var(--glow-soft);
+    border-radius:999px;padding:2px 9px;animation:esp-sync-pulse 1s var(--ease) infinite}
+  @keyframes esp-sync-pulse{0%,100%{opacity:.5}50%{opacity:1}}
+  .esp-kv{display:flex;flex-wrap:wrap;gap:8px 22px;margin:12px 0;color:var(--ink-dim);font-size:13px}
   .esp-kv b{color:var(--ink)}
   .esp-modules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
   .esp-mod{border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 11px;background:var(--surface-1)}
@@ -152,10 +241,28 @@
   .esp-mod .s{font-size:12px;color:var(--muted)}
   .esp-mod.ok{border-color:#1f5a4a}
   .esp-mod.bad{border-color:#5b2330}
-  #esp-chart-wrap{width:100%;overflow:hidden}
+  .esp-panel-hint:empty{display:none}
+  .esp-panel-hint{margin-top:10px;font-size:12px}
+  .esp-chart-caption{font-size:12.5px;margin:0 0 10px}
+  .esp-leg-wifi{color:var(--muted);border-bottom:1px dashed #31425f;padding-bottom:1px}
+  .esp-live-badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;
+    color:#34D399;background:rgba(52,211,153,.16);border:1px solid #1f5a4a;border-radius:999px;
+    padding:1px 8px;vertical-align:middle;margin-left:6px}
+  #esp-chart-wrap{width:100%;overflow-x:auto}
   #esp-chart{width:100%;height:220px;display:block}
-  .esp-chart-empty{margin-top:8px}
-  .esp-console-row{display:flex;gap:10px;align-items:stretch}
+  .esp-scan-read{margin-top:10px;font-size:14px;color:var(--ink)}
+  .esp-scan-meta{margin-top:4px;font-size:12px}
+  .esp-scan-meta:empty{display:none}
+  .esp-console-row{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}
+  .esp-picker-wrap{position:relative}
+  .esp-picker{position:absolute;top:calc(100% + 6px);left:0;z-index:40;width:300px;max-width:84vw;
+    background:var(--panel);border:1px solid var(--border-strong);border-radius:var(--r-sm);
+    box-shadow:0 10px 28px rgba(0,0,0,.5);padding:8px}
+  .esp-picker-list{max-height:260px;overflow-y:auto;margin-top:8px}
+  .esp-picker-item{display:block;width:100%;text-align:left;background:none;border:0;color:var(--ink);
+    font-family:var(--font-mono);font-size:13px;padding:7px 8px;border-radius:6px;cursor:pointer}
+  .esp-picker-item:hover,.esp-picker-item.sel{background:var(--surface-2)}
+  .esp-picker-empty{color:var(--muted);font-size:12px;padding:7px 8px}
   .esp-input{flex:1;min-width:0;background:var(--surface-1);border:1px solid var(--border-strong);
     color:var(--ink);border-radius:var(--r-sm);padding:10px 13px;font-size:14px}
   .esp-input:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 0 3px var(--glow-soft)}
@@ -167,12 +274,42 @@
     border-radius:var(--r-sm);padding:7px 8px;font-size:13px}
   .esp-modes-label{margin:14px 0 4px;text-transform:uppercase;letter-spacing:.1em;font-size:11px}
   .esp-catalog{margin-top:12px;font-size:12px}
+  .esp-log-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .esp-log-head h2{margin:0}
+  .esp-log-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .esp-pretty-toggle{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+  .esp-log-hint{font-size:11px;font-weight:400;text-transform:none;letter-spacing:0}
   .esp-log{height:300px;overflow-y:auto;background:#06090f;border:1px solid var(--border);
     border-radius:var(--r-sm);padding:10px 12px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;
-    word-break:break-word}
-  .esp-log .ln{color:var(--ink-dim)}
-  .esp-log .ln.j{color:var(--cyan-2)}
+    word-break:break-word;margin-top:10px}
+  .esp-log .ln{color:var(--ink-dim);padding:1px 0}
+  .esp-log .ln.has-raw{cursor:pointer}
+  .esp-log .ln.has-raw:hover{color:var(--ink)}
+  .esp-log .ln.ok{color:#8FD16B}
   .esp-log .ln.err{color:var(--sev-high)}
+  .esp-log .ln.alert{color:var(--sev-critical);font-weight:600}
+  .esp-log .ln.sys{color:var(--cyan-2)}
+  .esp-toasts{position:fixed;right:14px;top:14px;z-index:80;display:flex;flex-direction:column;gap:8px;
+    max-width:min(340px,86vw)}
+  .esp-toast{background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--cyan);
+    border-radius:10px;padding:9px 12px;font-size:13px;color:var(--ink);box-shadow:0 6px 20px rgba(0,0,0,.45);
+    word-break:break-word;animation:esp-toast-in .18s var(--ease)}
+  @keyframes esp-toast-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .esp-toast.ok{border-left-color:#34D399}
+  .esp-toast.err{border-left-color:var(--sev-high)}
+  .esp-toast.warn{border-left-color:#FF9B3D}
+  .esp-toast.alert{border-left-color:var(--sev-critical);font-weight:600}
+  .esp-toast.sent{border-left-color:var(--muted)}
+  @media (max-width:640px){
+    .esp-top-row{grid-template-columns:1fr}
+    .esp-console-row{flex-direction:column;align-items:stretch}
+    .esp-picker-wrap,.esp-console-row .btn{width:100%}
+    .esp-picker{width:100%;max-width:100%}
+    .esp-btns .btn,.esp-log-tools .btn{min-height:40px}
+    #esp-chart{min-width:460px}
+    .esp-log{height:240px}
+    .esp-toasts{right:8px;left:8px;top:8px;max-width:none}
+  }
 </style>
 
 <script>
@@ -182,88 +319,276 @@
   var READONLY = {{ 'true' if readonly else 'false' }};
   var ENABLED  = {{ 'true' if bridge_enabled else 'false' }};
   var CONTROLS_OFF = READONLY || !ENABLED;
+  var HB_STALE_MS = 15000;            // 3x the observed 5 s heartbeat interval
 
   function $(id){ return document.getElementById(id); }
   function setText(id,t){ var e=$(id); if(e) e.textContent=(t===undefined||t===null||t==="")?"—":String(t); }
   function num(v){ var n=Number(v); return isFinite(n)?n:null; }
+  function fmtUptime(ms){ var s=Math.floor((num(ms)||0)/1000); var h=Math.floor(s/3600),
+    m=Math.floor((s%3600)/60); s=s%60; return (h?h+"h ":"")+(h||m?m+"m ":"")+s+"s"; }
+  function runStateOf(state){ var s=String(state||"").toLowerCase();
+    if(s==="running") return "running";
+    if(s==="standby"||s==="stopped") return "stopped";
+    return "idle"; }
+
+  var LS = {
+    get:function(k,d){ try{ var v=localStorage.getItem(k); return v==null?d:v; }catch(e){ return d; } },
+    set:function(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+  };
+
+  // ---- toasts (one small stack, max 3; textContent only) ------------------
+  var toastWrap=$("esp-toasts"), toasts=[];
+  function dismiss(rec){ if(!rec) return; if(rec.timer) clearTimeout(rec.timer);
+    if(rec.el && rec.el.parentNode) rec.el.parentNode.removeChild(rec.el);
+    toasts=toasts.filter(function(r){ return r!==rec; }); }
+  function toast(kind, text, ttl){
+    if(!toastWrap) return null;
+    var el=document.createElement("div"); el.className="esp-toast"+(kind?(" "+kind):"");
+    el.textContent=text;
+    toastWrap.appendChild(el);
+    var rec={el:el};
+    toasts.push(rec);
+    while(toasts.length>3){ dismiss(toasts[0]); }
+    rec.timer=setTimeout(function(){ dismiss(rec); }, ttl||3500);
+    return rec;
+  }
+  function updateToast(rec, kind, text, ttl){
+    if(!rec || !rec.el){ return toast(kind,text,ttl); }
+    rec.el.className="esp-toast"+(kind?(" "+kind):""); rec.el.textContent=text;
+    if(rec.timer) clearTimeout(rec.timer);
+    rec.timer=setTimeout(function(){ dismiss(rec); }, ttl||3000);
+    return rec;
+  }
 
   // ---- bridge on/off toggle ----------------------------------------------
   var toggleBtn=$("esp-bridge-btn");
   if(toggleBtn && !READONLY){
     toggleBtn.addEventListener("click", function(){
-      var want = toggleBtn.getAttribute("data-enabled")!=="true";   // flip
+      var want = toggleBtn.getAttribute("data-enabled")!=="true";
       toggleBtn.disabled=true;
       var msg=$("esp-bridge-msg"); if(msg) msg.textContent = want?"turning on…":"turning off…";
       fetch("/esp/bridge", { method:"POST",
           headers:{ "Content-Type":"application/x-www-form-urlencoded" },
           body:new URLSearchParams({ csrf:csrf, enabled: want?"1":"0" }) })
         .then(function(r){ return r.json(); })
-        .then(function(j){
-          if(j && j.ok){ location.reload(); }     // re-render in the new state + reconnect
-          else { if(msg) msg.textContent="failed: "+((j&&j.error)||"unknown"); toggleBtn.disabled=false; }
-        })
+        .then(function(j){ if(j && j.ok){ location.reload(); }
+          else { if(msg) msg.textContent="failed: "+((j&&j.error)||"unknown"); toggleBtn.disabled=false; } })
         .catch(function(){ if(msg) msg.textContent="request failed"; toggleBtn.disabled=false; });
     });
   }
 
-  // ---- serial log (textContent only; device output is untrusted) ----------
+  // ---- serial log (textContent only; raw⇄pretty toggle per line) ----------
   var logEl=$("esp-log"), MAXLOG=500;
-  function addLine(raw, cls){
+  var autoscroll = LS.get("esp.autoscroll","1")!=="0";
+  var prettyDefault = LS.get("esp.pretty","0")==="1";
+  function classify(obj, raw){
+    if(obj){
+      if(obj.t==="detection") return "alert";
+      if(obj.t==="cmd_error" || obj.t==="error" || obj.t==="nak") return "err";
+      if(obj.t==="ack" || obj.t==="config_result" || obj.t==="ctrl_result") return "ok";
+      if(obj.t==="boot" || obj.t==="info" || obj.t==="help_result") return "sys";
+      return "";
+    }
+    if(raw && /\[E\]|error/i.test(raw)) return "err";
+    if(raw && /\[W\]/.test(raw)) return "err";
+    return "";
+  }
+  function scrollLogBottom(){ if(logEl) logEl.scrollTop=logEl.scrollHeight; }
+  function showJump(){ var j=$("esp-log-jump"); if(j) j.style.display=""; }
+  function hideJump(){ var j=$("esp-log-jump"); if(j) j.style.display="none"; }
+  function addLogEntry(text, obj){
     if(!logEl) return;
     var div=document.createElement("div");
-    div.className="ln"+(cls?(" "+cls):"");
-    div.textContent=raw;
+    var cls=classify(obj, obj?null:text);
+    div.className="ln"+(cls?(" "+cls):"")+(obj?" has-raw":"");
+    if(obj){
+      div._human=text; div._pretty=prettyDefault; div.title="click to toggle raw JSON";
+      div.textContent = div._pretty ? JSON.stringify(obj) : text;
+      div.addEventListener("click", function(){
+        div._pretty=!div._pretty;
+        div.textContent = div._pretty ? JSON.stringify(obj) : div._human;
+      });
+    } else {
+      div.textContent=text;
+    }
     logEl.appendChild(div);
     while(logEl.childNodes.length>MAXLOG) logEl.removeChild(logEl.firstChild);
-    logEl.scrollTop=logEl.scrollHeight;
+    if(autoscroll) scrollLogBottom(); else showJump();
   }
-  function logLine(raw){
-    var cls="";
-    if(raw && raw.charAt(0)==="{"){ cls="j"; }
-    if(raw && (raw.indexOf('"cmd_error"')>=0 || raw.indexOf('"error"')>=0)) cls="err";
-    addLine(raw, cls);
+  // log tools
+  function setAutoscroll(on){
+    autoscroll=on; LS.set("esp.autoscroll", on?"1":"0");
+    var b=$("esp-log-pause"); if(b) b.textContent = on?"Autoscroll: on":"Autoscroll: off";
+    if(on){ hideJump(); scrollLogBottom(); }
   }
+  (function initLogTools(){
+    var pause=$("esp-log-pause"); if(pause) pause.addEventListener("click", function(){ setAutoscroll(!autoscroll); });
+    var jump=$("esp-log-jump"); if(jump) jump.addEventListener("click", function(){ hideJump(); scrollLogBottom(); });
+    var clear=$("esp-log-clear"); if(clear) clear.addEventListener("click", function(){
+      if(logEl) logEl.innerHTML=""; hideJump(); });
+    var chk=$("esp-pretty-chk");
+    if(chk){ chk.checked=prettyDefault;
+      chk.addEventListener("change", function(){ prettyDefault=chk.checked; LS.set("esp.pretty", prettyDefault?"1":"0"); }); }
+    setAutoscroll(autoscroll);
+  })();
 
-  // ---- status strip -------------------------------------------------------
-  function setAlive(a){
-    var e=$("esp-live");
-    if(e){ e.textContent=a?"ALIVE":"SILENT"; e.style.color=a?"#34D399":"#FF9B3D"; }
+  // ---- live heartbeat widget ----------------------------------------------
+  var hbPrevFrames=null, hbDeltas=[], lastHbAt=0;
+  function pulse(){ var d=$("esp-hb-dot"); if(!d) return;
+    d.classList.remove("beat"); void d.offsetWidth; d.classList.add("beat"); }
+  function setFresh(fresh){ var d=$("esp-hb-dot"); if(d) d.classList.toggle("stale", !fresh); }
+  function drawSpark(){
+    var svg=$("hb-spark"); if(!svg) return;
+    if(!hbDeltas.length){ svg.innerHTML=""; return; }
+    var W=160,H=34, max=1; hbDeltas.forEach(function(v){ if(v>max) max=v; });
+    var n=hbDeltas.length, bw=W/Math.max(n,1), parts=[];
+    hbDeltas.forEach(function(v,i){
+      var bh=Math.max(1, v/max*(H-2));
+      parts.push('<rect x="'+(i*bw).toFixed(1)+'" y="'+(H-bh).toFixed(1)+'" width="'+
+        Math.max(1,bw-1).toFixed(1)+'" height="'+bh.toFixed(1)+'" fill="#34D399"/>');
+    });
+    svg.innerHTML=parts.join("");
   }
-  function applyHeartbeat(hb){
-    if(!hb) return;
+  function fillHbNumbers(hb){
+    setText("esp-uptime", hb.uptime_ms!=null?fmtUptime(hb.uptime_ms):"—");
     setText("esp-mode", hb.mode);
     setText("esp-channel", hb.channel);
     setText("esp-frames", hb.frames_seen);
     setText("esp-dropped", hb.dropped);
     setText("esp-dets", hb.detections_total);
-    setAlive(true);
   }
-  function applyStatusResult(sr){
-    if(!sr) return;
-    setText("esp-state", sr.state);
-    setText("esp-smode", sr.mode_name || sr.mode);
-    setText("esp-enabled", sr.enabled);
-    setText("esp-power", sr.pa);
-    setText("esp-dwell", sr.dwell);
-    var box=$("esp-modules");
-    if(box){
-      box.innerHTML="";
-      (sr.modules||[]).forEach(function(m){
-        if(!m||typeof m!=="object") return;
-        var ok = (m.state==="ready" || m.bus==="up" || m.ok===true);
-        var d=document.createElement("div");
-        d.className="esp-mod "+(ok?"ok":"bad");
-        var h=document.createElement("div"); h.className="h";
-        h.textContent=(m.name||("module-"+(m.id||"?")))+" · ch "+(m.ch!=null?m.ch:"—")+
-                      (m.freq!=null?(" ("+m.freq+" MHz)"):"");
-        var s=document.createElement("div"); s.className="s";
-        s.textContent=(m.state||"?")+" — "+(m.status||"");
-        d.appendChild(h); d.appendChild(s); box.appendChild(d);
-      });
+  function onHeartbeat(hb){                      // a LIVE heartbeat frame
+    if(!hb) return;
+    lastHbAt=Date.now(); pulse(); setFresh(true);
+    fillHbNumbers(hb);
+    var f=num(hb.frames_seen);
+    if(f!==null){
+      if(hbPrevFrames!==null){ var d=f-hbPrevFrames; if(d<0) d=f; hbDeltas.push(d);
+        if(hbDeltas.length>40) hbDeltas.shift(); drawSpark(); }
+      hbPrevFrames=f;
     }
+    pullStatusOnce();
+  }
+  setInterval(function(){ setFresh(lastHbAt>0 && (Date.now()-lastHbAt)<=HB_STALE_MS); }, 1000);
+
+  // ---- ACTIVE MODE panel model (one model; per-field last-writer merge) ----
+  var panel = { run_state:"idle", state:"", mode:"", enabled:"", power:null,
+                dwell:null, channel:"", modules_ready:"", modules:[] };
+  function mergeFrame(f){                         // mirrors esp_control.merge_panel
+    if(!f || typeof f!=="object") return;
+    var t=f.t;
+    if(t==="status_result"){
+      panel.state=f.state||""; panel.run_state=runStateOf(f.state);
+      panel.mode=f.mode_name || f.mode || "";
+      panel.enabled=(f.enabled!=null)?String(f.enabled):"";
+      panel.power=(f.pa!=null)?f.pa:null;
+      panel.dwell=(f.dwell!=null)?f.dwell:null;
+      panel.channel=(f.lock===-1||f.lock==null)?"auto":f.lock;
+      var mods=(f.modules&&f.modules.length)?f.modules:[]; panel.modules=mods;
+      var ready=0; mods.forEach(function(m){ if(m&&(m.state==="ready"||m.bus==="up"||m.ok===true)) ready++; });
+      panel.modules_ready = mods.length ? (ready+"/"+mods.length) : "";
+    } else if(t==="ctrl_result"){
+      if("state" in f){ panel.state=f.state; panel.run_state=runStateOf(f.state); }
+    } else if(t==="config_result"){
+      if("pa" in f) panel.power=f.pa;
+      if("dwell_us" in f) panel.dwell=f.dwell_us;
+      if("enabled" in f) panel.enabled=String(f.enabled);
+      if("mode" in f) panel.mode=f.mode;              // reflect the DEVICE-named mode
+      if(f.cmd==="ch") panel.channel = f.auto ? "auto" : f.lock;
+    }
+    renderPanel();
+  }
+  function renderModules(mods){
+    var box=$("esp-modules"); if(!box) return; box.innerHTML="";
+    (mods||[]).forEach(function(m){
+      if(!m || typeof m!=="object") return;
+      var ok=(m.state==="ready"||m.bus==="up"||m.ok===true);
+      var d=document.createElement("div"); d.className="esp-mod "+(ok?"ok":"bad");
+      var h=document.createElement("div"); h.className="h";
+      h.textContent=(m.name||("module-"+(m.id||"?")))+" · ch "+(m.ch!=null?m.ch:"—")+
+        (m.freq!=null?(" ("+m.freq+" MHz)"):"");
+      var s=document.createElement("div"); s.className="s";
+      s.textContent=(m.state||"?")+" — "+(m.status||"");
+      d.appendChild(h); d.appendChild(s); box.appendChild(d);
+    });
+  }
+  function renderPanel(){
+    setText("esp-state", panel.state||"—");
+    setText("esp-smode", panel.mode);
+    setText("esp-enabled", (panel.enabled||"") +
+      (panel.modules_ready?(" ("+panel.modules_ready+" ready)"):"") || "—");
+    setText("esp-power", panel.power);
+    setText("esp-dwell", panel.dwell);
+    setText("esp-pchannel", panel.channel);
+    renderModules(panel.modules);
+    // run-state chip
+    var chip=$("esp-runchip"), rs=panel.run_state, label, cls;
+    if(rs==="running"){ label="● Running"+(panel.mode?(" — "+panel.mode):""); cls="run"; }
+    else if(rs==="stopped"){ label="■ Stopped"; cls="stop"; }
+    else { label="Idle"; cls="idle"; }
+    if(chip){ chip.textContent=label; chip.className="esp-runchip "+cls; }
+    var hint=$("esp-run-hint"); if(hint) hint.style.display = (rs==="running") ? "none" : "";
+    if(rs==="running") startRun(); else stopRun();
   }
 
-  // ---- spectrum chart (numbers only; safe innerHTML) ----------------------
+  // ---- running readout + elapsed (client timer; no device run-start field) -
+  var runStart=0, runTimer=null, runApprox=false;
+  function fmtElapsed(ms){ var s=Math.floor(ms/1000); var h=Math.floor(s/3600),
+    m=Math.floor((s%3600)/60), r=s%60; function p(n){ return (n<10?"0":"")+n; }
+    return h ? (h+":"+p(m)+":"+p(r)) : (m+":"+p(r)); }
+  function startRun(){
+    var ro=$("esp-run-readout"); if(ro) ro.style.display="";
+    if(!runStart) runStart=Date.now();
+    tickRun();
+    if(!runTimer) runTimer=setInterval(tickRun, 1000);
+  }
+  function stopRun(){
+    if(runTimer){ clearInterval(runTimer); runTimer=null; }
+    runStart=0; runApprox=false;
+    var ro=$("esp-run-readout"); if(ro) ro.style.display="none";
+  }
+  function tickRun(){
+    setText("esp-run-mode", panel.mode);
+    var args=[];
+    if(panel.power!=null) args.push("power "+panel.power);
+    if(panel.dwell!=null) args.push("dwell "+panel.dwell);
+    if(panel.channel!=="" && panel.channel!=null) args.push("ch "+panel.channel);
+    if(panel.enabled!=="") args.push("radios "+panel.enabled);
+    setText("esp-run-args", args.join(" · ")||"—");
+    var el=$("esp-run-elapsed"); if(!el) return;
+    if(lastHbAt>0 && (Date.now()-lastHbAt)>HB_STALE_MS){ el.textContent="stale (no heartbeat)"; }
+    else if(runStart){ el.textContent=(runApprox?"~":"")+fmtElapsed(Date.now()-runStart); }
+  }
+
+  // ---- "syncing…" indicator (command sent -> next result / 1.5s) ----------
+  var syncTimer=null;
+  function startSync(){ var e=$("esp-sync"); if(e) e.style.display="";
+    if(syncTimer) clearTimeout(syncTimer); syncTimer=setTimeout(stopSync, 1500); }
+  function stopSync(){ var e=$("esp-sync"); if(e) e.style.display="none";
+    if(syncTimer){ clearTimeout(syncTimer); syncTimer=null; } }
+
+  // ---- detection prominence (badge + coalesced toast) ---------------------
+  var detCount=0, detToast=null, detPending=0, detTimer=null, detLastTitle="";
+  function onDetection(obj){
+    detCount++;
+    var b=$("esp-det-badge"); if(b){ b.style.display=""; setText("esp-det-count", detCount); }
+    detLastTitle = humanizeDetTitle(obj);
+    detPending++;
+    if(!detTimer){ flushDetToast();
+      detTimer=setTimeout(function(){ detTimer=null; if(detPending>0) flushDetToast(); }, 3000); }
+  }
+  function humanizeDetTitle(obj){
+    var map={deauth_flood_src:"Deauth flood",deauth_flood_aggregate:"Deauth flood",
+      beacon_flood:"Beacon flood",beacon_ssid_spam:"Beacon SSID spam",evil_twin:"Evil twin"};
+    return (map[obj&&obj.type]) || (obj&&obj.type) || "alert";
+  }
+  function flushDetToast(){
+    var txt = detPending>1 ? ("⚠ "+detPending+" detections") : ("⚠ detection: "+detLastTitle);
+    detToast = updateToast(detToast, "alert", txt, 5000);
+    detPending=0;
+  }
+
+  // ---- spectrum chart (numbers only; per-bar <title> tooltips) ------------
   var FMIN=2400, FMAX=2500, W=640, H=220, PADL=34, PADB=22, PADT=10, PADR=8;
   var WIFI=[{f:2412,n:"1"},{f:2437,n:"6"},{f:2462,n:"11"}];
   function series(sr){
@@ -277,129 +602,275 @@
       var v=num(h.hits!=null?h.hits:(h.rpd!=null?h.rpd:0)); if(v===null) v=0;
       agg[mhz]=(agg[mhz]||0)+v;
     });
-    return Object.keys(agg).map(function(k){ return {mhz:+k, value:agg[k]}; })
+    return Object.keys(agg).map(function(k){ return {mhz:+k, ch:(+k)-2400, value:agg[k]}; })
                  .sort(function(a,b){ return a.mhz-b.mhz; });
   }
   function xOf(mhz){ return PADL + (mhz-FMIN)/(FMAX-FMIN) * (W-PADL-PADR); }
   function drawChart(sr){
-    var svg=$("esp-chart"), empty=$("esp-chart-empty");
-    if(!svg) return;
+    var svg=$("esp-chart"); if(!svg) return;
     var s=series(sr);
-    if(!s.length){ svg.innerHTML=""; if(empty) empty.style.display="block"; return; }
-    if(empty) empty.style.display="none";
+    if(!s.length){ svg.innerHTML=""; return; }
     var maxv=1; s.forEach(function(p){ if(p.value>maxv) maxv=p.value; });
     var y0=H-PADB, plotH=H-PADB-PADT, parts=[];
     parts.push('<line x1="'+PADL+'" y1="'+y0+'" x2="'+(W-PADR)+'" y2="'+y0+'" stroke="#22304A"/>');
-    WIFI.forEach(function(w){
-      var x=xOf(w.f);
+    WIFI.forEach(function(w){ var x=xOf(w.f);
       parts.push('<line x1="'+x.toFixed(1)+'" y1="'+PADT+'" x2="'+x.toFixed(1)+'" y2="'+y0+'" stroke="#31425f" stroke-dasharray="3 4"/>');
-      parts.push('<text x="'+x.toFixed(1)+'" y="'+(PADT+9)+'" fill="#7E8CA3" font-size="9" text-anchor="middle">ch'+w.n+'</text>');
-    });
-    s.forEach(function(p){
-      var x=xOf(p.mhz), bh=Math.max(2, p.value/maxv*plotH);
-      parts.push('<rect x="'+(x-3).toFixed(1)+'" y="'+(y0-bh).toFixed(1)+'" width="6" height="'+bh.toFixed(1)+'" fill="#22D3EE" rx="1"/>');
-    });
+      parts.push('<text x="'+x.toFixed(1)+'" y="'+(PADT+9)+'" fill="#7E8CA3" font-size="9" text-anchor="middle">ch'+w.n+'</text>'); });
+    s.forEach(function(p){ var x=xOf(p.mhz), bh=Math.max(2, p.value/maxv*plotH);
+      parts.push('<rect x="'+(x-3).toFixed(1)+'" y="'+(y0-bh).toFixed(1)+'" width="6" height="'+bh.toFixed(1)+'" fill="#22D3EE" rx="1">'+
+        '<title>ch '+p.ch+' · '+p.mhz+' MHz · '+p.value+' hits</title></rect>'); });
     [2400,2425,2450,2475,2500].forEach(function(f){
-      parts.push('<text x="'+xOf(f).toFixed(1)+'" y="'+(H-6)+'" fill="#7E8CA3" font-size="9" text-anchor="middle">'+f+'</text>');
-    });
+      parts.push('<text x="'+xOf(f).toFixed(1)+'" y="'+(H-6)+'" fill="#7E8CA3" font-size="9" text-anchor="middle">'+f+'</text>'); });
     parts.push('<text x="4" y="'+(PADT+8)+'" fill="#7E8CA3" font-size="9">'+maxv+'</text>');
     svg.innerHTML=parts.join("");
   }
+  function updateScanRead(sr){
+    var s=series(sr), read=$("esp-scan-read"), meta=$("esp-scan-meta");
+    if(read){
+      if(!s.length){ read.textContent="No activity detected in this scan."; }
+      else { var p=s.reduce(function(a,b){ return b.value>a.value?b:a; });
+        read.textContent="Busiest: ch "+p.ch+" ("+p.mhz+" MHz) at "+p.value+" hits."; }
+    }
+    if(meta && sr){
+      var mods=(sr.modules||[]).map(function(m){ return m.name||("M"+(m.id||"?")); }).join(", ");
+      meta.textContent="passes: "+(sr.passes!=null?sr.passes:"?")+" · modules: "+(mods||"?")+
+        " · received "+new Date().toLocaleTimeString();
+    }
+  }
   var pendingScan=null, rafQueued=false;
-  function queueChart(sr){
-    pendingScan=sr;
+  function queueChart(sr){ pendingScan=sr; updateScanRead(sr);
     if(rafQueued) return; rafQueued=true;
-    requestAnimationFrame(function(){ rafQueued=false; drawChart(pendingScan); });
+    requestAnimationFrame(function(){ rafQueued=false; drawChart(pendingScan); }); }
+  // live-spectrum badge: only while a run is actively streaming scan frames
+  var specLiveTimer=null;
+  function markSpecLive(){
+    var t=$("esp-chart-title"), b=$("esp-chart-live");
+    if(t) t.childNodes[0].nodeValue="2.4 GHz spectrum — live ";
+    if(b) b.style.display="";
+    if(specLiveTimer) clearTimeout(specLiveTimer);
+    specLiveTimer=setTimeout(markSpecLast, 8000);
+  }
+  function markSpecLast(){
+    var t=$("esp-chart-title"), b=$("esp-chart-live");
+    if(t) t.childNodes[0].nodeValue="2.4 GHz spectrum — last scan ";
+    if(b) b.style.display="none";
+    if(specLiveTimer){ clearTimeout(specLiveTimer); specLiveTimer=null; }
   }
 
   // ---- command console ----------------------------------------------------
   var busyTimer=null;
-  function lockConsole(){
-    if(CONTROLS_OFF) return;
+  function lockConsole(){ if(CONTROLS_OFF) return;
     var send=$("esp-send"); if(send) send.disabled=true;
     document.querySelectorAll(".esp-btn,.esp-mode").forEach(function(b){ b.disabled=true; });
-    if(busyTimer) clearTimeout(busyTimer);
-    busyTimer=setTimeout(unlockConsole, 1500);     // fail-safe if no ack arrives
-  }
-  function unlockConsole(){
-    if(CONTROLS_OFF) return;
+    if(busyTimer) clearTimeout(busyTimer); busyTimer=setTimeout(unlockConsole, 1500); }
+  function unlockConsole(){ if(CONTROLS_OFF) return;
     if(busyTimer){ clearTimeout(busyTimer); busyTimer=null; }
     var send=$("esp-send"); if(send) send.disabled=false;
-    document.querySelectorAll(".esp-btn,.esp-mode").forEach(function(b){ b.disabled=false; });
-  }
+    document.querySelectorAll(".esp-btn,.esp-mode").forEach(function(b){ b.disabled=false; }); }
   function setCmdStatus(t){ setText("esp-cmd-status", t); }
+  function postCommand(text){ return fetch("/esp/command", { method:"POST",
+      headers:{ "Content-Type":"application/x-www-form-urlencoded" },
+      body:new URLSearchParams({ csrf:csrf, cmd:text }) }); }
+
+  var inflight=null;                               // the single in-flight USER command
+  function resolveInflight(obj){
+    if(!inflight) return;
+    if(obj && (obj.t==="cmd_error" || obj.t==="nak")){
+      var m=(obj.msg||obj.error||"error");
+      updateToast(inflight.toast, "err", "✗ "+m, 4000);
+    } else {
+      updateToast(inflight.toast, "ok", "✓ "+inflight.cmd, 2500);
+    }
+    if(inflight.timer) clearTimeout(inflight.timer);
+    inflight=null;
+  }
+  function scheduleBackstop(){                      // bare-ack command -> reconcile panel
+    if(CONTROLS_OFF) return;
+    setTimeout(function(){ sendSilent("status"); }, 400);
+  }
   function sendCommand(text){
     if(CONTROLS_OFF || !text) return;
-    lockConsole();
-    setCmdStatus("sending: "+text);
-    fetch("/esp/command", { method:"POST",
-        headers:{ "Content-Type":"application/x-www-form-urlencoded" },
-        body:new URLSearchParams({ csrf:csrf, cmd:text }) })
-      .then(function(r){ return r.json().then(function(j){ return {s:r.status,j:j}; }); })
+    pushHistory(text);
+    lockConsole(); startSync(); setCmdStatus("sending: "+text);
+    if(inflight && inflight.timer) clearTimeout(inflight.timer);
+    inflight={ cmd:text, toast:toast("sent","sent: "+text, 6000) };
+    inflight.timer=setTimeout(function(){
+      if(inflight){ updateToast(inflight.toast, "warn", "no response: "+inflight.cmd, 3000); inflight=null; }
+    }, 4000);
+    postCommand(text).then(function(r){ return r.json().then(function(j){ return {s:r.status,j:j}; }); })
       .then(function(o){
         if(o.j && o.j.ok){ setCmdStatus("sent ✓ "+(o.j.sent||text)); }
-        else { setCmdStatus("not sent: "+((o.j&&o.j.error)||(o.j&&o.j.reason)||("HTTP "+o.s))); unlockConsole(); }
+        else {
+          var err=(o.j&&o.j.error)||(o.j&&o.j.reason)||("HTTP "+o.s);
+          setCmdStatus("not sent: "+err); unlockConsole(); stopSync();
+          if(inflight){ updateToast(inflight.toast,"err","✗ "+err,4000);
+            if(inflight.timer) clearTimeout(inflight.timer); inflight=null; }
+        }
       })
-      .catch(function(){ setCmdStatus("request failed"); unlockConsole(); });
+      .catch(function(){ setCmdStatus("request failed"); unlockConsole(); stopSync();
+        if(inflight){ updateToast(inflight.toast,"err","✗ request failed",4000);
+          if(inflight.timer) clearTimeout(inflight.timer); inflight=null; } });
   }
-  var form=$("esp-cmd-form");
-  if(form) form.addEventListener("submit", function(e){
-    e.preventDefault();
-    var inp=$("esp-cmd-input"); if(inp){ sendCommand(inp.value.trim()); inp.select(); }
+  function sendSilent(text){ if(CONTROLS_OFF || !text) return; postCommand(text).catch(function(){}); }
+  var statusPulled=false;
+  function pullStatusOnce(){ if(!statusPulled && !CONTROLS_OFF){ statusPulled=true; sendSilent("status"); } }
+
+  // command history (localStorage, ↑/↓ recall) ------------------------------
+  var history=[]; try{ var h=JSON.parse(LS.get("esp.cmdhist","[]")); if(h&&h.forEach) history=h; }catch(e){}
+  var histIdx=-1, histDraft="";
+  function pushHistory(cmd){
+    if(!cmd) return;
+    if(history[history.length-1]!==cmd) history.push(cmd);
+    while(history.length>50) history.shift();
+    LS.set("esp.cmdhist", JSON.stringify(history)); histIdx=-1;
+  }
+
+  var form=$("esp-cmd-form"), input=$("esp-cmd-input");
+  if(form) form.addEventListener("submit", function(e){ e.preventDefault();
+    if(input){ sendCommand(input.value.trim()); input.select(); } });
+  if(input) input.addEventListener("keydown", function(e){
+    if(e.key==="ArrowUp"){
+      if(!history.length) return;
+      if(histIdx===-1){ histDraft=input.value; histIdx=history.length; }
+      if(histIdx>0){ histIdx--; input.value=history[histIdx];
+        e.preventDefault(); input.setSelectionRange(input.value.length, input.value.length); }
+    } else if(e.key==="ArrowDown"){
+      if(histIdx===-1) return;
+      histIdx++;
+      if(histIdx>=history.length){ histIdx=-1; input.value=histDraft; }
+      else input.value=history[histIdx];
+      e.preventDefault();
+    }
   });
   document.querySelectorAll(".esp-btn").forEach(function(b){
-    b.addEventListener("click", function(){
-      var cmd=b.getAttribute("data-cmd");
-      if(b.getAttribute("data-arg")){
-        var arg=document.querySelector('.esp-arg[data-for="'+cmd+'"]');
-        if(arg && arg.value!=="") cmd=cmd+" "+arg.value;
-      }
-      sendCommand(cmd);
-    });
-  });
+    b.addEventListener("click", function(){ var cmd=b.getAttribute("data-cmd");
+      if(b.getAttribute("data-arg")){ var arg=document.querySelector('.esp-arg[data-for="'+cmd+'"]');
+        if(arg && arg.value!=="") cmd=cmd+" "+arg.value; }
+      sendCommand(cmd); }); });
   document.querySelectorAll(".esp-mode").forEach(function(b){
-    b.addEventListener("click", function(){ sendCommand(b.getAttribute("data-cmd")); });
-  });
+    b.addEventListener("click", function(){ sendCommand(b.getAttribute("data-cmd")); }); });
 
-  // ---- firmware-reported catalog (dynamic discovery) ----------------------
-  function applyCatalog(hr){
-    if(!hr) return;
-    var el=$("esp-catalog"); if(!el) return;
-    var cmds=(hr.commands||[]).join(", ");
-    el.textContent = cmds ? ("firmware reports: "+cmds) : "";
+  // ---- command picker (searchable; inserts into the free-text box) --------
+  var pickerItems=[];
+  function setPickerFromCatalog(cat){
+    pickerItems=[];
+    (cat.commands||[]).forEach(function(c){ pickerItems.push({cmd:String(c), label:String(c)}); });
+    var modes=cat.modes||{};
+    Object.keys(modes).forEach(function(k){ pickerItems.push({cmd:k, label:k+" · "+modes[k]}); });
+    renderPickerList("");
   }
+  function renderPickerList(q){
+    var list=$("esp-picker-list"); if(!list) return; list.innerHTML="";
+    q=(q||"").toLowerCase();
+    var shown=pickerItems.filter(function(it){ return it.label.toLowerCase().indexOf(q)>=0; });
+    if(!shown.length){ var e=document.createElement("div"); e.className="esp-picker-empty";
+      e.textContent="no match"; list.appendChild(e); return; }
+    shown.slice(0,60).forEach(function(it){
+      var b=document.createElement("button"); b.type="button"; b.className="esp-picker-item";
+      b.textContent=it.label;
+      b.addEventListener("click", function(){
+        if(input){ input.value=it.cmd+" "; input.focus();
+          input.setSelectionRange(input.value.length, input.value.length); }
+        closePicker();
+      });
+      list.appendChild(b);
+    });
+  }
+  function openPicker(){ var p=$("esp-picker"), btn=$("esp-picker-btn");
+    if(p){ p.style.display=""; } if(btn) btn.setAttribute("aria-expanded","true");
+    var s=$("esp-picker-search"); if(s){ s.value=""; renderPickerList(""); s.focus(); } }
+  function closePicker(){ var p=$("esp-picker"), btn=$("esp-picker-btn");
+    if(p) p.style.display="none"; if(btn) btn.setAttribute("aria-expanded","false"); }
+  (function initPicker(){
+    var btn=$("esp-picker-btn"); if(btn) btn.addEventListener("click", function(e){
+      e.stopPropagation(); var p=$("esp-picker"); if(p && p.style.display==="none") openPicker(); else closePicker(); });
+    var s=$("esp-picker-search");
+    if(s){ s.addEventListener("input", function(){ renderPickerList(s.value); });
+      s.addEventListener("keydown", function(e){ if(e.key==="Escape") closePicker(); }); }
+    document.addEventListener("click", function(e){
+      var p=$("esp-picker"); if(!p || p.style.display==="none") return;
+      if(!p.contains(e.target) && e.target!==btn) closePicker(); });
+    // seed from the static catalog immediately, then refine from the firmware
+    setPickerFromCatalog({ commands:[{% for c in commands %}"{{ c.cmd }}",{% endfor %}],
+                           modes:{ {% for letter, desc in modes.items() %}"{{ letter }}":"{{ desc }}",{% endfor %} } });
+    fetch("/esp/command/catalog").then(function(r){ return r.json(); })
+      .then(function(cat){ if(cat) setPickerFromCatalog(cat); }).catch(function(){});
+  })();
+
+  // ---- catalog (dynamic discovery) ----------------------------------------
+  function applyCatalog(hr){ if(!hr) return; var el=$("esp-catalog"); if(!el) return;
+    var cmds=(hr.commands||[]).join(", "); el.textContent = cmds ? ("firmware reports: "+cmds) : "";
+    setPickerFromCatalog({ commands:hr.commands||[], modes:hr.modes||{} }); }
 
   // ---- frame dispatch -----------------------------------------------------
   function onFrame(obj){
-    if(!obj||!obj.t) return;
+    if(!obj || !obj.t) return;
+    if(obj.t==="status_result" || obj.t==="config_result" || obj.t==="ctrl_result"){
+      mergeFrame(obj); stopSync();
+    }
     switch(obj.t){
-      case "heartbeat": applyHeartbeat(obj); break;
-      case "status_result": applyStatusResult(obj); break;
-      case "scan_result": queueChart(obj); break;
-      case "help_result": applyCatalog(obj); break;
-      case "ack": case "nak": case "cmd_error": unlockConsole(); break;
+      case "scan_result": case "search_result":
+        queueChart(obj);
+        if(panel.run_state==="running") markSpecLive();
+        resolveInflight(obj); break;
+      case "ctrl_result":
+        if(runStateOf(obj.state)==="running"){ runStart=Date.now(); runApprox=false; }
+        else if(runStateOf(obj.state)==="stopped"){ markSpecLast(); }
+        unlockConsole(); resolveInflight(obj); break;
+      case "config_result": case "diag_result": case "selftest_result":
+      case "status_result": unlockConsole(); resolveInflight(obj); break;
+      case "ack": unlockConsole(); resolveInflight(obj); scheduleBackstop(); break;
+      case "cmd_error": case "nak": unlockConsole(); resolveInflight(obj); break;
+      case "help_result": applyCatalog(obj); unlockConsole(); resolveInflight(obj); break;
+      case "detection": onDetection(obj); break;
+      case "info": resolveInflight(obj); break;
     }
   }
   function applySnapshot(s){
     if(!s) return;
-    if(logEl){ logEl.innerHTML=""; (s.logs||[]).forEach(logLine); }
-    setAlive(!!s.alive);
-    applyHeartbeat(s.status);
-    applyStatusResult(s.status_result);
-    drawChart(s.scan_result);
+    // reconnect-safe: only paint the snapshot log into an EMPTY pane (first connect)
+    if(logEl && logEl.childNodes.length===0){
+      (s.logs||[]).forEach(function(e){
+        if(e && typeof e==="object"){ addLogEntry(e.text!=null?e.text:"", e.obj); }
+        else { addLogEntry(String(e), null); } });
+    }
+    if(s.panel){ for(var k in s.panel){ if(s.panel.hasOwnProperty(k)) panel[k]=s.panel[k]; }
+      if(panel.run_state==="running") runApprox=true;   // seeded already-running: approximate
+      renderPanel(); }
+    else if(s.status_result){ mergeFrame(s.status_result); }
+    if(s.status){                               // seed numbers; only a LIVE device beats
+      fillHbNumbers(s.status);
+      if(s.alive){ lastHbAt=Date.now();
+        if(hbPrevFrames===null){ var f=num(s.status.frames_seen); if(f!==null) hbPrevFrames=f; }
+        pullStatusOnce(); }
+    }
+    if(s.scan_result){ queueChart(s.scan_result); }
+    setFresh(!!s.alive && lastHbAt>0);
   }
 
-  // ---- seed + stream ------------------------------------------------------
+  // ---- seed paint + stream (reconnect-safe across bf-cache) ---------------
   try{ applySnapshot(JSON.parse(($("esp-seed")||{}).textContent || "null")); }catch(e){}
 
-  if(ENABLED && window.EventSource){      // no point streaming while the bridge is off
-    var es=new EventSource("/esp/stream");
+  var es=null;
+  function connectStream(){
+    if(es || !ENABLED || !window.EventSource) return;
+    es=new EventSource("/esp/stream");
     es.addEventListener("snapshot", function(ev){ try{ applySnapshot(JSON.parse(ev.data)); }catch(e){} });
-    es.addEventListener("line", function(ev){ try{ logLine(JSON.parse(ev.data)); }catch(e){} });
-    es.addEventListener("frame", function(ev){ try{ onFrame(JSON.parse(ev.data)); }catch(e){} });
-    es.addEventListener("tick", function(ev){ try{ setAlive(!!JSON.parse(ev.data).alive); }catch(e){} });
-    // EventSource auto-reconnects on transient errors.
+    es.addEventListener("line", function(ev){ try{ addLogEntry(JSON.parse(ev.data), null); }catch(e){} });
+    es.addEventListener("frame", function(ev){ try{ var f=JSON.parse(ev.data);
+      if(f.heartbeat){ onHeartbeat(f.obj); }          // heartbeat -> widget, NOT the log
+      else { addLogEntry(f.text, f.obj); onFrame(f.obj); } }catch(e){} });
+    es.addEventListener("tick", function(ev){ try{ setFresh(!!JSON.parse(ev.data).alive && lastHbAt>0); }catch(e){} });
   }
+  function closeStream(){ if(es){ es.close(); es=null; } }
+
+  // Init on BOTH initial load and bf-cache restore (pageshow) so returning from
+  // "recorded runs" via the back button resumes the stream with no refresh;
+  // close the EventSource on hide so it never leaks toward the per-origin limit.
+  connectStream();
+  window.addEventListener("pageshow", function(e){ connectStream(); });
+  window.addEventListener("pagehide", closeStream);
+  window.addEventListener("beforeunload", closeStream);
 })();
 </script>
 {% endblock %}

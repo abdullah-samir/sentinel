@@ -1,0 +1,8 @@
+{
+  "t": "info",
+  "msg": "ready",
+  "mode": "sniffer",
+  "channel": 6,
+  "hop": false,
+  "http": false
+}

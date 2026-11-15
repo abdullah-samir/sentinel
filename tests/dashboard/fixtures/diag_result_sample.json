@@ -1,0 +1,38 @@
+{
+  "t": "diag_result",
+  "ok": true,
+  "reset_reason": "power-on",
+  "uptime_s": 8,
+  "free_heap": 167668,
+  "min_free_heap": 164404,
+  "supply_mv": -1,
+  "supply_status": "not configured",
+  "state": "standby",
+  "mode": "r",
+  "lock": -1,
+  "pa": 3,
+  "dwell": 60,
+  "verbosity": 3,
+  "modules": [
+    {
+      "id": 1,
+      "name": "module-1",
+      "en": true,
+      "state": "uninit",
+      "status": "module not ready",
+      "ch": 45,
+      "freq": 2445,
+      "bus": "down"
+    },
+    {
+      "id": 2,
+      "name": "module-2",
+      "en": true,
+      "state": "uninit",
+      "status": "module not ready",
+      "ch": 45,
+      "freq": 2445,
+      "bus": "down"
+    }
+  ]
+}
