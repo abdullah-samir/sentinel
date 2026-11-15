@@ -1,27 +1,30 @@
 // ============================================================================
-//  Sentinel — Dual nRF24L01+PA+LNA Receive-Only RPD Scanner & Serial Console
-//  Strictly passive/defensive: never transmits, injects, or disables Wi-Fi.
+//  2.4 GHz RF Controller & RPD Scanner - ESP32-S3-DevKitC-1 + 2x nRF24L01+PA+LNA
+//  Merged module for Sentinel ESP32-S3 Wi-Fi attack detector.
+//  Dual independent SPI buses (FSPI/SPI2 & HSPI/SPI3), FreeRTOS queue + Core-1
+//  radio worker task, single serial console (Serial + Serial0), compact JSON
+//  output via detector Out tee.
 // ============================================================================
 
 #include "nrf_scanner.h"
 #include "out.h"
 
+#include <Arduino.h>
 #include <SPI.h>
 #include <RF24.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/queue.h>
 #include <ctype.h>
-#include <stdlib.h>
-#include <string.h>
 #include <strings.h>
 #include <stdarg.h>
 #include <esp_system.h>
 #include <esp_timer.h>
 #include <esp_heap_caps.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <freertos/queue.h>
+#include "esp_bt.h"
 
 // ---------------------------------------------------------------------------
-//  Pin map — non-overlapping with USB-CDC (19/20) and UART0 (43/44)
+//  Pin map - Module 1 on SPI2/FSPI, Module 2 on SPI3/HSPI
 // ---------------------------------------------------------------------------
 #define M1_CE   5
 #define M1_CSN  6
@@ -35,6 +38,7 @@
 #define M2_MISO 17
 #define M2_MOSI 18
 
+// #include <SPI.h> above defines FSPI (SPI2) and HSPI (SPI3) for ESP32-S3.
 #ifndef FSPI
 #define FSPI 1
 #endif
@@ -47,47 +51,47 @@
 // ---------------------------------------------------------------------------
 //  Tunables
 // ---------------------------------------------------------------------------
-#define RF_SPI_SPEED_HZ       4000000 // 4 MHz: clean edges on DuPont leads
-#define CONSOLE_BUF           64
-#define CONSOLE_MAX_TOKENS    4
+#define RF_SPI_SPEED_HZ      4000000 // 4 MHz: clean edges over DuPont leads
 
-#define SCAN_DWELL_US         220     // RPD integration dwell per channel
-#define SCAN_MAX_CHANNELS     126     // nRF24 channels 0..125
-#define SCAN_MAX_PASSES       200
-#define SEARCH_INTERVAL_MS    250     // cadence for continuous 'search' updates
+#define CONSOLE_BUF          48
+#define CONSOLE_MAX_TOKENS   4
 
-// Optional 1:1 voltage divider from external 3V3 rail to ADC1 pin (-1 = off)
-#define SUPPLY_SENSE_PIN      -1
-#define SUPPLY_DIVIDER        2.0f
-#define SUPPLY_MIN_MV         3000
-#define SUPPLY_TRIP_COUNT     3
+#define HOP_DWELL_US         60      // upper bound of the per-hop jitter window
+#define HOP_YIELD_US         50000   // feed FreeRTOS idle task every 50 ms
+
+// Wire a 1:1 divider from the 3V3 rail to this ADC1 pin and match SUPPLY_DIVIDER.
+// Leave SUPPLY_SENSE_PIN at -1 when not wired.
+#define SUPPLY_SENSE_PIN     -1
+#define SUPPLY_DIVIDER       2.0f
+#define SUPPLY_MIN_MV        3000
+#define SUPPLY_POLL_US       250000  // check 3V3 rail every 250 ms when active
+#define SUPPLY_TRIP_COUNT    3       // consecutive low readings before cutoff
+
+#define SCAN_DWELL_US        220
+#define SCAN_MAX_CHANNELS    128     // covers all channel tables 1:1
+#define SCAN_MAX_PASSES      200
+
+#define RESULT_POOL_SIZE     4
+#define RESULT_JSON_MAX      8192
 
 #ifndef DEFAULT_VERBOSITY
-#define DEFAULT_VERBOSITY     3
+#define DEFAULT_VERBOSITY    3
 #endif
 
 // ---------------------------------------------------------------------------
-//  Logging (human-readable lines passed through Out tee alongside JSON)
+//  Logging
 // ---------------------------------------------------------------------------
 static uint8_t g_verbosity = DEFAULT_VERBOSITY;
 
-static void log_printf(uint8_t level, char tag, const char *fmt, ...) {
-  if (level > g_verbosity) return;
-  char msg[192];
-  va_list ap;
-  va_start(ap, fmt);
-  vsnprintf(msg, sizeof(msg), fmt, ap);
-  va_end(ap);
-
-  char line[208];
-  snprintf(line, sizeof(line), "[%c] %s", tag, msg);
-  Out.println(line);
-}
+static void log_printf(uint8_t level, char tag, const char *fmt, ...);
 
 #define LOG_E(...) log_printf(1, 'E', __VA_ARGS__)
 #define LOG_W(...) log_printf(2, 'W', __VA_ARGS__)
 #define LOG_I(...) log_printf(3, 'I', __VA_ARGS__)
 #define LOG_D(...) log_printf(4, 'D', __VA_ARGS__)
+
+static void log_setVerbosity(uint8_t level) { g_verbosity = level > 4 ? 4 : level; }
+static uint8_t log_verbosity() { return g_verbosity; }
 
 // ---------------------------------------------------------------------------
 //  Channel tables (2400 + ch MHz)
@@ -99,21 +103,26 @@ struct ChannelSet {
   size_t count;
 };
 
-static const uint8_t kIsm[] = {
-   1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-  21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-  41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
-  61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
-  81, 82, 83
+static const uint8_t kOdd[] = {
+  1,  3,  5,  7,  9,  11, 13, 15, 17, 19,
+  21, 23, 25, 27, 29, 31, 33, 35, 37, 39,
+  41, 43, 45, 47, 49, 51, 53, 55, 57, 59,
+  61, 63, 65, 67, 69, 71, 73, 75, 77, 79
+};
+static const uint8_t kEven[] = {
+  2,  4,  6,  8,  10, 12, 14, 16, 18, 20,
+  22, 24, 26, 28, 30, 32, 34, 36, 38, 40,
+  42, 44, 46, 48, 50, 52, 54, 56, 58, 60,
+  62, 64, 66, 68, 70, 72, 74, 76, 78, 80
 };
 static const uint8_t kBt[] = {
-   1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
   21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
   41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
   61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80
 };
 static const uint8_t kWifi[] = {
-   6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,
   22, 24, 26, 28,
   30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44,
   46, 48, 50, 52,
@@ -124,44 +133,54 @@ static const uint8_t kUsb[]   = {40, 50, 60};
 static const uint8_t kVideo[] = {70, 75, 80};
 static const uint8_t kRc[]    = {1, 3, 5, 7};
 static const uint8_t kFull[] = {
-   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-  20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
-  40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59,
-  60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79,
-  80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99,
-  100
+  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+  22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+  43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+  64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84,
+  85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100
+};
+// 1..83 = 2401..2483 MHz, stays inside the 2.4 GHz ISM upper boundary.
+static const uint8_t kIsm[] = {
+  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+  22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+  43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+  64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83
 };
 
+// 'o' and 'e' back the odd/even split used by mode 'r'; they are not user modes.
 static const ChannelSet kSets[] = {
-  {'i', "ism",   kIsm,   sizeof(kIsm)   / sizeof(kIsm[0])},
-  {'r', "bt",    kBt,    sizeof(kBt)    / sizeof(kBt[0])},
-  {'w', "wifi",  kWifi,  sizeof(kWifi)  / sizeof(kWifi[0])},
-  {'b', "ble",   kBle,   sizeof(kBle)   / sizeof(kBle[0])},
-  {'u', "usb",   kUsb,   sizeof(kUsb)   / sizeof(kUsb[0])},
-  {'v', "video", kVideo, sizeof(kVideo) / sizeof(kVideo[0])},
-  {'c', "rc",    kRc,    sizeof(kRc)    / sizeof(kRc[0])},
-  {'f', "full",  kFull,  sizeof(kFull)  / sizeof(kFull[0])},
+  {'r', "random bluetooth odd/even", kBt,    sizeof(kBt)    / sizeof(kBt[0])},
+  {'o', "bluetooth odd",             kOdd,   sizeof(kOdd)   / sizeof(kOdd[0])},
+  {'e', "bluetooth even",            kEven,  sizeof(kEven)  / sizeof(kEven[0])},
+  {'w', "wifi",                      kWifi,  sizeof(kWifi)  / sizeof(kWifi[0])},
+  {'b', "ble advertising",           kBle,   sizeof(kBle)   / sizeof(kBle[0])},
+  {'u', "usb wireless",              kUsb,   sizeof(kUsb)   / sizeof(kUsb[0])},
+  {'v', "video streaming",           kVideo, sizeof(kVideo) / sizeof(kVideo[0])},
+  {'c', "rc toys/drones",            kRc,    sizeof(kRc)    / sizeof(kRc[0])},
+  {'f', "full spectrum",             kFull,  sizeof(kFull)  / sizeof(kFull[0])},
+  {'i', "ism band 2401-2483 MHz",    kIsm,   sizeof(kIsm)   / sizeof(kIsm[0])},
 };
+
 static const size_t kSetTotal = sizeof(kSets) / sizeof(kSets[0]);
 
 static const ChannelSet *channelSetById(char id) {
-  for (size_t i = 0; i < kSetTotal; i++) {
+  for (size_t i = 0; i < kSetTotal; i++)
     if (kSets[i].id == id) return &kSets[i];
-  }
   return nullptr;
 }
 
-static const ChannelSet *channelSetByNameOrId(const char *s) {
-  if (!s || !s[0]) return nullptr;
-  if (s[1] == '\0') return channelSetById((char)tolower((unsigned char)s[0]));
-  for (size_t i = 0; i < kSetTotal; i++) {
-    if (!strcasecmp(s, kSets[i].name)) return &kSets[i];
-  }
-  return nullptr;
+static bool modeIsValid(char id) {
+  return id == 'r' || id == 'w' || id == 'b' || id == 'u' ||
+         id == 'v' || id == 'c' || id == 'f' || id == 'i';
+}
+
+static const char *modeName(char id) {
+  const ChannelSet *s = channelSetById(id);
+  return s ? s->name : "unknown";
 }
 
 // ---------------------------------------------------------------------------
-//  Module state / status
+//  Module state / status / PA level helpers
 // ---------------------------------------------------------------------------
 enum RfStatus : uint8_t {
   RF_OK = 0,
@@ -170,37 +189,51 @@ enum RfStatus : uint8_t {
   RF_ERR_NO_CHIP,
   RF_ERR_REG_ECHO,
   RF_ERR_NOT_READY,
+  RF_ERR_CARRIER,
 };
 
 enum RfState : uint8_t {
   RF_UNINIT = 0,
   RF_READY,
+  RF_RUNNING,
   RF_FAULT,
 };
 
 static const char *rfStatusText(RfStatus s) {
   switch (s) {
     case RF_OK:               return "ok";
-    case RF_ERR_BUS_BEGIN:    return "spi_bus_failed";
-    case RF_ERR_DRIVER_BEGIN: return "driver_begin_failed";
-    case RF_ERR_NO_CHIP:      return "no_chip_detected";
-    case RF_ERR_REG_ECHO:     return "register_echo_mismatch";
-    case RF_ERR_NOT_READY:    return "not_ready";
+    case RF_ERR_BUS_BEGIN:    return "spi bus begin failed";
+    case RF_ERR_DRIVER_BEGIN: return "driver begin failed";
+    case RF_ERR_NO_CHIP:      return "no chip detected";
+    case RF_ERR_REG_ECHO:     return "register echo mismatch";
+    case RF_ERR_NOT_READY:    return "module not ready";
+    case RF_ERR_CARRIER:      return "carrier start failed";
   }
   return "unknown";
 }
 
 static const char *rfStateText(RfState s) {
   switch (s) {
-    case RF_UNINIT: return "uninit";
-    case RF_READY:  return "ready";
-    case RF_FAULT:  return "fault";
+    case RF_UNINIT:  return "uninit";
+    case RF_READY:   return "ready";
+    case RF_RUNNING: return "running";
+    case RF_FAULT:   return "fault";
   }
   return "unknown";
 }
 
+static uint64_t s_lastYieldUs = 0;
+
+static void serviceWatchdog() {
+  uint64_t now = (uint64_t)esp_timer_get_time();
+  if (now - s_lastYieldUs >= HOP_YIELD_US) {
+    s_lastYieldUs = now;
+    vTaskDelay(1);
+  }
+}
+
 // ---------------------------------------------------------------------------
-//  RfModule — receive-only wrapper (exclusively owned by Core 1 worker task)
+//  RfModule - one SPI bus, one radio, independent health tracking
 // ---------------------------------------------------------------------------
 class RfModule {
 public:
@@ -209,8 +242,12 @@ public:
     : _radio(ce, csn, RF_SPI_SPEED_HZ), _name(name), _ce(ce), _csn(csn),
       _sck(sck), _miso(miso), _mosi(mosi) {}
 
-  RfStatus begin(SPIClass *bus) {
+  // Retryable: the bus is latched on first call, so a later call with nullptr
+  // re-runs the whole bring-up after a transient fault without a reboot.
+  RfStatus begin(SPIClass *bus, uint8_t paLevel) {
     if (bus != nullptr) _bus = bus;
+    _paLevel = paLevel > 3 ? 3 : paLevel;
+
     if (_bus == nullptr) {
       _state = RF_FAULT;
       _status = RF_ERR_BUS_BEGIN;
@@ -218,183 +255,284 @@ public:
     }
 
     if (!_busUp) {
-      _busBeginOk = _bus->begin(_sck, _miso, _mosi, -1);
-      _busHw = (_bus->bus() != nullptr);
+      _bus->begin(_sck, _miso, _mosi, -1);
       _busUp = true;
-      vTaskDelay(pdMS_TO_TICKS(10));
+      delay(10);
     }
 
     if (!_radio.begin(_bus)) {
+      LOG_E("%s: driver begin failed", _name);
       _state = RF_FAULT;
       _status = RF_ERR_DRIVER_BEGIN;
       return _status;
     }
 
     if (!_radio.isChipConnected()) {
+      LOG_E("%s: no chip on SPI (CE=%u CSN=%u)", _name, _ce, _csn);
       _state = RF_FAULT;
       _status = RF_ERR_NO_CHIP;
       return _status;
     }
 
     _radio.setAutoAck(false);
+    _radio.stopListening();
     _radio.setRetries(0, 0);
+    _radio.setPALevel((rf24_pa_dbm_e)_paLevel, true);
     _radio.setDataRate(RF24_2MBPS);
     _radio.setCRCLength(RF24_CRC_DISABLED);
     _radio.setChannel(_channel);
-    _radio.startListening();
 
     _state = RF_READY;
     _status = RF_OK;
+    LOG_I("%s: ready (CE=%u CSN=%u SCK=%u MISO=%u MOSI=%u)",
+          _name, _ce, _csn, _sck, _miso, _mosi);
     return RF_OK;
+  }
+
+  void shutdown() {
+    if (ready()) _radio.stopConstCarrier();
+    if (_state != RF_UNINIT) _radio.powerDown();
+    _state = RF_UNINIT;
+  }
+
+  bool setChannel(uint8_t channel) {
+    if (!ready()) return false;
+    if (channel == _channel) return true;
+    _radio.setChannel(channel);
+    _channel = channel;
+    return true;
+  }
+
+  bool setPaLevel(uint8_t paLevel) {
+    _paLevel = paLevel > 3 ? 3 : paLevel;
+    if (!ready()) return true;
+    if (_state == RF_RUNNING) {
+      _radio.stopConstCarrier();
+      _radio.setPALevel((rf24_pa_dbm_e)_paLevel, true);
+      _radio.startConstCarrier((rf24_pa_dbm_e)_paLevel, _channel);
+      if (_radio.getChannel() != _channel) {
+        LOG_E("%s: channel did not stick on PA update", _name);
+        _status = RF_ERR_CARRIER;
+        _state = RF_FAULT;
+        return false;
+      }
+    } else {
+      _radio.setPALevel((rf24_pa_dbm_e)_paLevel, true);
+    }
+    return true;
+  }
+
+  bool startCarrier(uint8_t paLevel) {
+    if (!ready()) {
+      _status = RF_ERR_NOT_READY;
+      return false;
+    }
+    _paLevel = paLevel > 3 ? 3 : paLevel;
+    _radio.startConstCarrier((rf24_pa_dbm_e)_paLevel, _channel);
+    if (_radio.getChannel() != _channel) {
+      LOG_E("%s: channel did not stick on carrier start", _name);
+      _status = RF_ERR_CARRIER;
+      _state = RF_FAULT;
+      return false;
+    }
+    _state = RF_RUNNING;
+    _status = RF_OK;
+    return true;
+  }
+
+  void stopCarrier() {
+    if (_state == RF_RUNNING) {
+      _radio.stopConstCarrier();
+      _state = RF_READY;
+    }
   }
 
   RfStatus selfTest() {
     if (!ready()) {
-      RfStatus r = begin(_bus);
+      RfStatus r = begin(_bus, _paLevel);
       if (r != RF_OK) return r;
     }
-    _radio.stopListening();
-    static const uint8_t probe[] = {3, 42, 100};
-    uint8_t saved = _channel;
-    for (uint8_t i = 0; i < sizeof(probe); i++) {
-      _radio.setChannel(probe[i]);
-      if (_radio.getChannel() != probe[i]) {
-        _radio.setChannel(saved);
-        _radio.startListening();
-        _state = RF_FAULT;
-        _status = RF_ERR_REG_ECHO;
-        return _status;
+    RfStatus r = echoTest();
+    _status = r;
+    if (r != RF_OK) {
+      _state = RF_FAULT;
+      LOG_E("%s: self-test failed (%s)", _name, rfStatusText(r));
+    } else {
+      LOG_I("%s: self-test passed", _name);
+    }
+    return r;
+  }
+
+  // Multi-pass receive-only sweep. Accumulates hit counts per channel index
+  // into hitCounts[0..count-1]. Restores RF_CH and carrier state on exit.
+  uint16_t scanRPD(const uint8_t *channels, size_t count,
+                   uint16_t *hitCounts, uint16_t passes) {
+    if (!ready() || channels == nullptr || hitCounts == nullptr || count == 0) return 0;
+
+    size_t n = count < SCAN_MAX_CHANNELS ? count : SCAN_MAX_CHANNELS;
+    for (size_t i = 0; i < n; i++) hitCounts[i] = 0;
+
+    bool wasRunning = running();
+    if (wasRunning) _radio.stopConstCarrier();
+
+    _radio.startListening();
+    for (uint16_t p = 0; p < passes; p++) {
+      for (size_t i = 0; i < n; i++) {
+        _radio.setChannel(channels[i]);
+        delayMicroseconds(SCAN_DWELL_US);
+        if (_radio.testRPD()) hitCounts[i]++;
+        serviceWatchdog();
       }
     }
-    _radio.setChannel(saved);
-    _radio.startListening();
-    _status = RF_OK;
-    return RF_OK;
-  }
+    _radio.stopListening();
+    _radio.setChannel(_channel);     // resync RF_CH with the tracked channel
 
-  void parkChannel(uint8_t ch) {
-    if (!ready()) return;
-    if (ch > 125) ch = 125;
-    _radio.setChannel(ch);
-    _radio.startListening();
-    _channel = ch;
-  }
+    if (wasRunning) _radio.startConstCarrier((rf24_pa_dbm_e)_paLevel, _channel);
 
-  bool sampleChannelRPD(uint8_t ch) {
-    if (!ready()) return false;
-    _radio.setChannel(ch);
-    _channel = ch;
-    delayMicroseconds(SCAN_DWELL_US);
-    return _radio.testRPD();
-  }
-
-  void powerDown() {
-    if (ready()) {
-      _radio.stopListening();
-      _radio.powerDown();
-      _state = RF_UNINIT;
+    uint16_t activeChannels = 0;
+    for (size_t i = 0; i < n; i++) {
+      if (hitCounts[i] > 0) activeChannels++;
     }
+    return activeChannels;
   }
 
   const char *name() const { return _name; }
   RfState state() const { return _state; }
   RfStatus status() const { return _status; }
   uint8_t channel() const { return _channel; }
-  bool ready() const { return _state == RF_READY; }
-
-  // Diagnostic: raw nRF24 register read over SPI, independent of RF24 state.
-  // Works even when begin() failed, so it tells a begin/logic bug (reg echoes a
-  // sane default, e.g. CONFIG=0x08 after power-on) apart from dead comms
-  // (0x00 = MISO stuck low, 0xFF = MISO floating / no responder).
-  uint8_t probeReg(uint8_t reg) {
-    if (_bus == nullptr || _bus->bus() == nullptr) return 0xEE;  // no SPI host
-    pinMode(_csn, OUTPUT);
-    digitalWrite(_csn, HIGH);
-    _bus->beginTransaction(SPISettings(RF_SPI_SPEED_HZ, MSBFIRST, SPI_MODE0));
-    digitalWrite(_csn, LOW);
-    _bus->transfer(reg & 0x1F);          // R_REGISTER (0x00) | reg address
-    uint8_t v = _bus->transfer(0xFF);
-    digitalWrite(_csn, HIGH);
-    _bus->endTransaction();
-    return v;
-  }
-  bool busBeginOk() const { return _busBeginOk; }
-  bool busHw() const { return _busHw; }
+  bool busUp() const { return _busUp; }
+  bool ready() const { return _state == RF_READY || _state == RF_RUNNING; }
+  bool running() const { return _state == RF_RUNNING; }
 
 private:
+  RfStatus echoTest() {
+    static const uint8_t probe[] = {3, 42, 100};
+    uint8_t saved = _channel;
+    for (uint8_t i = 0; i < sizeof(probe); i++) {
+      _radio.setChannel(probe[i]);
+      if (_radio.getChannel() != probe[i]) {
+        _radio.setChannel(saved);
+        return RF_ERR_REG_ECHO;
+      }
+    }
+    _radio.setChannel(saved);
+    return RF_OK;
+  }
+
   RF24 _radio;
   const char *_name;
   uint8_t _ce, _csn, _sck, _miso, _mosi;
-  uint8_t _channel = 40;
+  uint8_t _channel = 45;
+  uint8_t _paLevel = 3;
   RfState _state = RF_UNINIT;
   RfStatus _status = RF_ERR_NOT_READY;
   bool _busUp = false;
-  bool _busBeginOk = false;
-  bool _busHw = false;
   SPIClass *_bus = nullptr;
 };
 
 // ---------------------------------------------------------------------------
-//  IPC Command & Result Queues (Core 1 loop() <-> Core 1 nrfScannerTask)
+//  Instances and controller state (owned exclusively by Core-1 worker task)
 // ---------------------------------------------------------------------------
-enum ScanCmdType : uint8_t {
-  CMD_SCAN_ONCE = 1,
-  CMD_SEARCH_START,
-  CMD_SET_CHANNEL,
+static RfModule module1("module-1", M1_CE, M1_CSN, M1_SCK, M1_MISO, M1_MOSI);
+static RfModule module2("module-2", M2_CE, M2_CSN, M2_SCK, M2_MISO, M2_MOSI);
+static RfModule *const g_modules[MODULE_COUNT] = {&module1, &module2};
+
+// Static bus objects bound to SPI2 (FSPI) and SPI3 (HSPI) - no heap allocation.
+static SPIClass g_bus1(FSPI);
+static SPIClass g_bus2(HSPI);
+static SPIClass *const g_buses[MODULE_COUNT] = {&g_bus1, &g_bus2};
+
+enum CtrlState : uint8_t { CTRL_STANDBY = 0, CTRL_RUNNING };
+
+static CtrlState g_state = CTRL_STANDBY;
+static char g_mode = 'r';
+static uint16_t g_dwell = HOP_DWELL_US;
+static uint8_t g_paLevel = 3;          // 0..3 -> RF24_PA_MIN..RF24_PA_MAX
+static int16_t g_lockedChannel = -1;   // -1 = hop mode table, 0..125 = fixed CW ch
+static uint8_t g_enabledMask = 0x03;   // bit 0 = module-1, bit 1 = module-2
+static uint32_t g_hopCount = 0;
+static bool g_bleReleased = false;
+
+// ---------------------------------------------------------------------------
+//  FreeRTOS command & result queues
+// ---------------------------------------------------------------------------
+enum NrfCmdType : uint8_t {
+  CMD_START = 1,
   CMD_STOP,
+  CMD_STATUS,
+  CMD_DIAG,
   CMD_SELFTEST,
-  CMD_STATUS_REQ,
+  CMD_SCAN,
+  CMD_SEARCH,
+  CMD_MODE,
+  CMD_DWELL,
+  CMD_POWER,
+  CMD_CHANNEL,
+  CMD_ENABLE,
+  CMD_DEBUG,
+  CMD_HELP,
 };
 
-struct ScannerCommand {
-  ScanCmdType type;
-  uint32_t reqId;
-  uint8_t channels[SCAN_MAX_CHANNELS];
-  uint8_t channelCount;
-  uint16_t passes;
-  uint8_t parkCh;
-  char label[16];
+struct NrfCmd {
+  NrfCmdType type;
+  int32_t arg;
+  bool hasArg;
 };
 
-enum ResultType : uint8_t {
-  RES_SCAN = 1,
-  RES_SEARCH,
-  RES_STATUS,
-  RES_SELFTEST,
-  RES_SUPPLY_TRIP,
+struct NrfResult {
+  char json[RESULT_JSON_MAX];
 };
 
-struct ModuleSnapshot {
-  RfState state;
-  RfStatus status;
-  uint8_t ch;
-  uint8_t rawReg;      // diagnostic: raw CONFIG(0x00) read over SPI
-  bool busHw;          // diagnostic: SPIClass::bus() resolved to a real host
-  bool busBeginOk;     // diagnostic: SPIClass::begin() returned true
-};
-
-struct ScannerResult {
-  ResultType type;
-  uint32_t reqId;
-  char stateStr[16];
-  char label[16];
-  uint8_t channels[SCAN_MAX_CHANNELS];
-  uint16_t hits[SCAN_MAX_CHANNELS];
-  uint8_t channelCount;
-  uint16_t passes;
-  uint32_t passIndex;
-  uint8_t parkedCh;
-  int supplyMv;
-  ModuleSnapshot mod[MODULE_COUNT];
-};
-
-static QueueHandle_t g_cmdQueue = nullptr;
-static QueueHandle_t g_resQueue = nullptr;
+static QueueHandle_t s_cmdQueue = nullptr;
+static QueueHandle_t s_freeQueue = nullptr;
+static QueueHandle_t s_resQueue = nullptr;
+static TaskHandle_t s_workerTask = nullptr;
+static NrfResult s_resPool[RESULT_POOL_SIZE];
+static bool s_initialized = false;
 
 // ---------------------------------------------------------------------------
-//  Supply sense helper
+//  Logging implementation
 // ---------------------------------------------------------------------------
-static int readSupplyMillivolts() {
+static void log_printf(uint8_t level, char tag, const char *fmt, ...) {
+  if (level > g_verbosity) return;
+  char line[192];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(line, sizeof(line), fmt, ap);
+  va_end(ap);
+  Serial.printf("[%c] %s\n", tag, line);
+}
+
+// ---------------------------------------------------------------------------
+//  Diagnostics & rail monitor
+// ---------------------------------------------------------------------------
+static const char *diag_resetReasonText() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:   return "power-on";
+    case ESP_RST_EXT:       return "external pin";
+    case ESP_RST_SW:        return "software";
+    case ESP_RST_PANIC:     return "panic/exception";
+    case ESP_RST_INT_WDT:   return "interrupt watchdog";
+    case ESP_RST_TASK_WDT:  return "task watchdog";
+    case ESP_RST_WDT:       return "other watchdog";
+    case ESP_RST_DEEPSLEEP: return "deep sleep wake";
+    case ESP_RST_BROWNOUT:  return "BROWNOUT";
+    case ESP_RST_SDIO:      return "sdio";
+    default:                return "unknown";
+  }
+}
+
+static uint32_t diag_uptimeSeconds() {
+  return (uint32_t)(esp_timer_get_time() / 1000000ULL);
+}
+
+static uint32_t diag_freeHeap() { return (uint32_t)esp_get_free_heap_size(); }
+
+static uint32_t diag_minFreeHeap() {
+  return (uint32_t)heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
+}
+
+static int diag_supplyMillivolts() {
 #if SUPPLY_SENSE_PIN >= 0
   uint32_t mv = 0;
   for (uint8_t i = 0; i < 8; i++) mv += analogReadMilliVolts(SUPPLY_SENSE_PIN);
@@ -404,468 +542,561 @@ static int readSupplyMillivolts() {
 #endif
 }
 
+static const char *diag_supplyVerdict(int mv) {
+  if (mv < 0) return "not configured";
+  if (mv < SUPPLY_MIN_MV) return "LOW - brownout risk";
+  if (mv < SUPPLY_MIN_MV + 150) return "marginal";
+  return "nominal";
+}
+
 // ---------------------------------------------------------------------------
-//  Dual-module RPD sweep (M1 bottom-up, M2 top-down for LO separation)
+//  JSON helpers
 // ---------------------------------------------------------------------------
-static void executeDualSweep(RfModule *mods, const uint8_t *chList, uint8_t count,
-                             uint16_t passes, uint16_t *outHits) {
-  for (uint8_t i = 0; i < count; i++) outHits[i] = 0;
-
-  for (uint8_t m = 0; m < MODULE_COUNT; m++) {
-    if (!mods[m].ready()) mods[m].begin(nullptr);
-  }
-
-  bool m0 = mods[0].ready();
-  bool m1 = mods[1].ready();
-  if (!m0 && !m1) return;
-
-  for (uint16_t p = 0; p < passes; p++) {
-    if (m0 && m1) {
-      uint8_t mid = count / 2;
-      for (uint8_t i = 0; i < mid; i++) {
-        if (mods[0].sampleChannelRPD(chList[i])) outHits[i]++;
-      }
-      for (int i = (int)count - 1; i >= (int)mid; i--) {
-        if (mods[1].sampleChannelRPD(chList[i])) outHits[i]++;
-      }
-    } else {
-      RfModule &active = m0 ? mods[0] : mods[1];
-      for (uint8_t i = 0; i < count; i++) {
-        if (active.sampleChannelRPD(chList[i])) outHits[i]++;
+static void jsonEscape(const char *src, char *dst, size_t dstLen) {
+  if (!dst || dstLen == 0) return;
+  size_t j = 0;
+  if (src) {
+    for (size_t i = 0; src[i] != '\0' && j + 2 < dstLen; i++) {
+      unsigned char c = (unsigned char)src[i];
+      if (c == '"' || c == '\\') {
+        if (j + 3 >= dstLen) break;
+        dst[j++] = '\\';
+        dst[j++] = (char)c;
+      } else if (c >= 0x20 && c <= 0x7E) {
+        dst[j++] = (char)c;
       }
     }
-    taskYIELD();
+  }
+  dst[j] = '\0';
+}
+
+static void emitJsonLine(const char *fmt, ...) {
+  if (!s_freeQueue || !s_resQueue) return;
+  NrfResult *slot = nullptr;
+  if (xQueueReceive(s_freeQueue, &slot, pdMS_TO_TICKS(50)) != pdTRUE || !slot) {
+    LOG_W("result queue full, dropping output");
+    return;
+  }
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(slot->json, sizeof(slot->json), fmt, ap);
+  va_end(ap);
+  if (xQueueSend(s_resQueue, &slot, 0) != pdTRUE) {
+    xQueueSend(s_freeQueue, &slot, 0);
+  }
+}
+
+static void jsonAppend(char *buf, size_t cap, size_t &pos, const char *fmt, ...) {
+  if (pos >= cap) return;
+  va_list ap;
+  va_start(ap, fmt);
+  int w = vsnprintf(buf + pos, cap - pos, fmt, ap);
+  va_end(ap);
+  if (w > 0) {
+    pos += (size_t)w;
+    if (pos >= cap) pos = cap - 1;
   }
 }
 
 // ---------------------------------------------------------------------------
-//  Core 1 FreeRTOS Worker Task (owns all RF24 SPI calls exclusively)
+//  Hardware & controller helpers (run on Core-1 worker task)
 // ---------------------------------------------------------------------------
-static void nrfScannerTask(void *pv) {
-  (void)pv;
-  static SPIClass bus2(HSPI);
-  static RfModule mods[MODULE_COUNT] = {
-    RfModule("m1", M1_CE, M1_CSN, M1_SCK, M1_MISO, M1_MOSI),
-    RfModule("m2", M2_CE, M2_CSN, M2_SCK, M2_MISO, M2_MOSI)
-  };
-
-  mods[0].begin(&SPI);
-  mods[1].begin(&bus2);
-
-  // Diagnostic: prove which SPI host each bus resolved to. On the S3 the real
-  // core constants are FSPI=0 (SPI2) / HSPI=1 (SPI3); a null bus() => host never
-  // started (hidden by CORE_DEBUG_LEVEL=0).
-  LOG_I("spi macros FSPI=%d HSPI=%d | m1.bus=%p m2.bus=%p",
-        (int)FSPI, (int)HSPI, (void *)SPI.bus(), (void *)bus2.bus());
-
-  enum WorkerMode : uint8_t { W_IDLE = 0, W_SEARCHING, W_PARKED };
-  WorkerMode wMode = W_IDLE;
-  uint8_t parkedCh = 40;
-  uint32_t activeReqId = 0;
-  char activeLabel[16] = "ism";
-  uint8_t activeChannels[SCAN_MAX_CHANNELS] = {0};
-  uint8_t activeCount = 0;
-  uint16_t activePasses = 1;
-  uint32_t searchPassCounter = 0;
-  uint8_t lowRailStreak = 0;
-
-  static ScannerCommand cmd;
-  static ScannerResult res;
-
-  auto fillStatus = [&](ScannerResult &r, ResultType t, uint32_t id) {
-    memset(&r, 0, sizeof(r));
-    r.type = t;
-    r.reqId = id;
-    r.parkedCh = parkedCh;
-    r.supplyMv = readSupplyMillivolts();
-    strlcpy(r.label, activeLabel, sizeof(r.label));
-    const char *st = (wMode == W_SEARCHING) ? "searching" :
-                     (wMode == W_PARKED)    ? "parked"    : "idle";
-    strlcpy(r.stateStr, st, sizeof(r.stateStr));
-    for (uint8_t i = 0; i < MODULE_COUNT; i++) {
-      r.mod[i].state = mods[i].state();
-      r.mod[i].status = mods[i].status();
-      r.mod[i].ch = mods[i].channel();
-      r.mod[i].rawReg = mods[i].probeReg(0x00);   // CONFIG register
-      r.mod[i].busHw = mods[i].busHw();
-      r.mod[i].busBeginOk = mods[i].busBeginOk();
-    }
-  };
-
-  for (;;) {
-    TickType_t waitTicks = (wMode == W_SEARCHING) ? pdMS_TO_TICKS(10) : pdMS_TO_TICKS(100);
-
-    if (xQueueReceive(g_cmdQueue, &cmd, waitTicks) == pdTRUE) {
-      switch (cmd.type) {
-        case CMD_SCAN_ONCE: {
-          wMode = W_IDLE;
-          executeDualSweep(mods, cmd.channels, cmd.channelCount, cmd.passes, res.hits);
-          uint16_t savedHits[SCAN_MAX_CHANNELS];
-          memcpy(savedHits, res.hits, cmd.channelCount * sizeof(uint16_t));
-          fillStatus(res, RES_SCAN, cmd.reqId);
-          strlcpy(res.label, cmd.label, sizeof(res.label));
-          res.channelCount = cmd.channelCount;
-          res.passes = cmd.passes;
-          memcpy(res.channels, cmd.channels, cmd.channelCount);
-          memcpy(res.hits, savedHits, cmd.channelCount * sizeof(uint16_t));
-          xQueueSend(g_resQueue, &res, 0);
-          break;
-        }
-
-        case CMD_SEARCH_START: {
-          wMode = W_SEARCHING;
-          activeReqId = cmd.reqId;
-          strlcpy(activeLabel, cmd.label, sizeof(activeLabel));
-          activeCount = cmd.channelCount;
-          activePasses = cmd.passes;
-          memcpy(activeChannels, cmd.channels, activeCount);
-          searchPassCounter = 0;
-          break;
-        }
-
-        case CMD_SET_CHANNEL: {
-          wMode = W_PARKED;
-          parkedCh = cmd.parkCh;
-          for (uint8_t i = 0; i < MODULE_COUNT; i++) {
-            if (!mods[i].ready()) mods[i].begin(nullptr);
-            mods[i].parkChannel(parkedCh);
-          }
-          fillStatus(res, RES_STATUS, cmd.reqId);
-          xQueueSend(g_resQueue, &res, 0);
-          break;
-        }
-
-        case CMD_STOP: {
-          wMode = W_IDLE;
-          break;
-        }
-
-        case CMD_SELFTEST: {
-          wMode = W_IDLE;
-          for (uint8_t i = 0; i < MODULE_COUNT; i++) mods[i].selfTest();
-          fillStatus(res, RES_SELFTEST, cmd.reqId);
-          xQueueSend(g_resQueue, &res, 0);
-          break;
-        }
-
-        case CMD_STATUS_REQ: {
-          fillStatus(res, RES_STATUS, cmd.reqId);
-          xQueueSend(g_resQueue, &res, 0);
-          break;
-        }
-      }
-    }
-
-    if (wMode == W_SEARCHING && activeCount > 0) {
-      fillStatus(res, RES_SEARCH, activeReqId);
-      strlcpy(res.label, activeLabel, sizeof(res.label));
-      res.channelCount = activeCount;
-      res.passes = activePasses;
-      res.passIndex = ++searchPassCounter;
-      memcpy(res.channels, activeChannels, activeCount);
-      executeDualSweep(mods, res.channels, res.channelCount, res.passes, res.hits);
-      for (uint8_t i = 0; i < MODULE_COUNT; i++) {
-        res.mod[i].state = mods[i].state();
-        res.mod[i].status = mods[i].status();
-        res.mod[i].ch = mods[i].channel();
-      }
-      xQueueSend(g_resQueue, &res, 0);
-      vTaskDelay(pdMS_TO_TICKS(SEARCH_INTERVAL_MS));
-    }
-
-    int mv = readSupplyMillivolts();
-    if (mv >= 0 && mv < SUPPLY_MIN_MV) {
-      if (++lowRailStreak >= SUPPLY_TRIP_COUNT) {
-        wMode = W_IDLE;
-        mods[0].powerDown();
-        mods[1].powerDown();
-        lowRailStreak = 0;
-        fillStatus(res, RES_SUPPLY_TRIP, 0);
-        xQueueSend(g_resQueue, &res, 0);
-      }
-    } else {
-      lowRailStreak = 0;
-    }
-  }
+static bool ensureReady(RfModule *m, uint8_t index) {
+  if (m->ready()) return true;
+  RfStatus r = m->begin(g_buses[index], g_paLevel);
+  return r == RF_OK;
 }
 
-// ---------------------------------------------------------------------------
-//  JSON Formatters (executed strictly in loop() via Out tee)
-// ---------------------------------------------------------------------------
-static char g_jsonOut[6144];
+static void checkSupplyGuard() {
+#if SUPPLY_SENSE_PIN >= 0
+  static uint64_t s_lastSupplyUs = 0;
+  static uint8_t s_lowStreak = 0;
 
-static void emitAck(uint32_t id, const char *cmdName, const char *extraJson = nullptr) {
-  if (extraJson && extraJson[0]) {
-    snprintf(g_jsonOut, sizeof(g_jsonOut),
-             "{\"t\":\"ack\",\"id\":%lu,\"cmd\":\"%s\",%s}",
-             (unsigned long)id, cmdName, extraJson);
+  uint64_t now = (uint64_t)esp_timer_get_time();
+  if (now - s_lastSupplyUs < SUPPLY_POLL_US) return;
+  s_lastSupplyUs = now;
+
+  int mv = diag_supplyMillivolts();
+  if (mv >= 0 && mv < SUPPLY_MIN_MV) {
+    if (++s_lowStreak >= SUPPLY_TRIP_COUNT) {
+      for (uint8_t i = 0; i < MODULE_COUNT; i++) g_modules[i]->stopCarrier();
+      g_state = CTRL_STANDBY;
+      s_lowStreak = 0;
+      LOG_E("supply guard tripped (%d mV < %d mV) - carriers stopped", mv, SUPPLY_MIN_MV);
+    }
   } else {
-    snprintf(g_jsonOut, sizeof(g_jsonOut),
-             "{\"t\":\"ack\",\"id\":%lu,\"cmd\":\"%s\"}",
-             (unsigned long)id, cmdName);
+    s_lowStreak = 0;
   }
-  Out.println(g_jsonOut);
+#endif
 }
 
-static void emitSweepResult(const ScannerResult &r) {
-  const char *tag = (r.type == RES_SEARCH) ? "search_result" : "scan_result";
+// Release unused BLE memory only; never touch Wi-Fi because the detector sniffer owns it.
+static void releaseUnusedBle() {
+  esp_err_t e = esp_bt_controller_disable();
+  if (e != ESP_OK && e != ESP_ERR_INVALID_STATE)
+    LOG_W("bt_disable: %s", esp_err_to_name(e));
+  e = esp_bt_controller_deinit();
+  if (e != ESP_OK && e != ESP_ERR_INVALID_STATE)
+    LOG_W("bt_deinit: %s", esp_err_to_name(e));
+  esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+  LOG_I("onboard BLE released (Wi-Fi preserved for detector)");
+}
+
+// ---------------------------------------------------------------------------
+//  Command handlers (run on Core-1 worker task, emit one compact JSON line)
+// ---------------------------------------------------------------------------
+static void execStart() {
+  if (g_state == CTRL_RUNNING) {
+    emitJsonLine("{\"t\":\"ctrl_result\",\"cmd\":\"start\",\"ok\":true,\"state\":\"running\",\"msg\":\"already running\"}");
+    return;
+  }
+  if (g_enabledMask == 0) {
+    emitJsonLine("{\"t\":\"ctrl_result\",\"cmd\":\"start\",\"ok\":false,\"state\":\"standby\",\"msg\":\"no modules enabled\"}");
+    return;
+  }
+
+  if (!g_bleReleased) {
+    releaseUnusedBle();
+    g_bleReleased = true;
+  }
+
+  uint8_t up = 0;
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+    if ((g_enabledMask & (1U << i)) == 0) continue;
+    RfModule *m = g_modules[i];
+    if (!ensureReady(m, i)) continue;
+    if (m->selfTest() != RF_OK) continue;
+    if (g_lockedChannel >= 0) m->setChannel((uint8_t)g_lockedChannel);
+    if (m->startCarrier(g_paLevel)) up++;
+  }
+
+  if (up == 0) {
+    g_state = CTRL_STANDBY;
+    emitJsonLine("{\"t\":\"ctrl_result\",\"cmd\":\"start\",\"ok\":false,\"state\":\"standby\",\"active\":0,\"msg\":\"no module ready\"}");
+    return;
+  }
+
+  g_hopCount = 0;
+  g_state = CTRL_RUNNING;
+  emitJsonLine("{\"t\":\"ctrl_result\",\"cmd\":\"start\",\"ok\":true,\"state\":\"running\",\"active\":%u,\"total\":%u}",
+               (unsigned)up, (unsigned)MODULE_COUNT);
+}
+
+static void execStop() {
+  bool wasRunning = (g_state == CTRL_RUNNING);
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) g_modules[i]->stopCarrier();
+  g_state = CTRL_STANDBY;
+  emitJsonLine("{\"t\":\"ctrl_result\",\"cmd\":\"stop\",\"ok\":true,\"state\":\"standby\",\"msg\":\"%s\"}",
+               wasRunning ? "carriers stopped" : "already stopped");
+}
+
+static void execStatus() {
+  NrfResult *slot = nullptr;
+  if (!s_freeQueue || !s_resQueue ||
+      xQueueReceive(s_freeQueue, &slot, pdMS_TO_TICKS(50)) != pdTRUE || !slot) {
+    return;
+  }
+  char *b = slot->json;
+  size_t cap = sizeof(slot->json);
   size_t pos = 0;
-  if (r.type == RES_SEARCH) {
-    pos += snprintf(g_jsonOut + pos, sizeof(g_jsonOut) - pos,
-                    "{\"t\":\"%s\",\"id\":%lu,\"target\":\"%s\",\"pass\":%lu,\"passes\":%u,\"channels\":[",
-                    tag, (unsigned long)r.reqId, r.label,
-                    (unsigned long)r.passIndex, (unsigned)r.passes);
-  } else {
-    pos += snprintf(g_jsonOut + pos, sizeof(g_jsonOut) - pos,
-                    "{\"t\":\"%s\",\"id\":%lu,\"mode\":\"%s\",\"passes\":%u,\"channels\":[",
-                    tag, (unsigned long)r.reqId, r.label, (unsigned)r.passes);
-  }
 
-  for (uint8_t i = 0; i < r.channelCount && pos + 64 < sizeof(g_jsonOut); i++) {
-    uint8_t ch = r.channels[i];
-    uint16_t hits = r.hits[i];
-    pos += snprintf(g_jsonOut + pos, sizeof(g_jsonOut) - pos,
-                    "%s{\"ch\":%u,\"mhz\":%u,\"rpd\":%u,\"hits\":%u}",
-                    (i > 0) ? "," : "",
-                    (unsigned)ch, 2400U + ch, hits > 0 ? 1U : 0U, (unsigned)hits);
-  }
+  jsonAppend(b, cap, pos,
+             "{\"t\":\"status_result\",\"ok\":true,\"state\":\"%s\",\"mode\":\"%c\","
+             "\"mode_name\":\"%s\",\"pa\":%u,\"dwell\":%u,\"hops\":%lu,\"lock\":%d,"
+             "\"enabled\":\"%s\",\"modules\":[",
+             g_state == CTRL_RUNNING ? "running" : "standby",
+             g_mode, modeName(g_mode), (unsigned)g_paLevel,
+             (unsigned)g_dwell, (unsigned long)g_hopCount, (int)g_lockedChannel,
+             g_enabledMask == 0x03 ? "both" : (g_enabledMask == 0x01 ? "1" : "2"));
 
-  if (pos + 4 < sizeof(g_jsonOut)) {
-    g_jsonOut[pos++] = ']';
-    g_jsonOut[pos++] = '}';
-    g_jsonOut[pos] = '\0';
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+    RfModule *m = g_modules[i];
+    bool enabled = (g_enabledMask & (1U << i)) != 0;
+    jsonAppend(b, cap, pos,
+               "%s{\"id\":%u,\"name\":\"%s\",\"en\":%s,\"state\":\"%s\","
+               "\"status\":\"%s\",\"ch\":%u,\"freq\":%u,\"bus\":\"%s\"}",
+               i > 0 ? "," : "",
+               (unsigned)(i + 1), m->name(), enabled ? "true" : "false",
+               rfStateText(m->state()), rfStatusText(m->status()),
+               (unsigned)m->channel(), 2400U + m->channel(),
+               m->busUp() ? "up" : "down");
   }
-  Out.println(g_jsonOut);
+  jsonAppend(b, cap, pos, "]}");
+
+  if (xQueueSend(s_resQueue, &slot, 0) != pdTRUE) {
+    xQueueSend(s_freeQueue, &slot, 0);
+  }
 }
 
-static void emitStatusResult(const ScannerResult &r) {
-  snprintf(g_jsonOut, sizeof(g_jsonOut),
-           "{\"t\":\"status_result\",\"id\":%lu,\"state\":\"%s\",\"mode\":\"%s\","
-           "\"ch\":%u,\"mhz\":%u,\"mv\":%d,\"heap\":%lu,"
-           "\"m1\":{\"state\":\"%s\",\"status\":\"%s\",\"ch\":%u,\"reg\":\"0x%02X\",\"bus_hw\":%d,\"bus_begin\":%d},"
-           "\"m2\":{\"state\":\"%s\",\"status\":\"%s\",\"ch\":%u,\"reg\":\"0x%02X\",\"bus_hw\":%d,\"bus_begin\":%d}}",
-           (unsigned long)r.reqId, r.stateStr, r.label,
-           (unsigned)r.parkedCh, 2400U + r.parkedCh, r.supplyMv,
-           (unsigned long)esp_get_free_heap_size(),
-           rfStateText(r.mod[0].state), rfStatusText(r.mod[0].status), (unsigned)r.mod[0].ch,
-           (unsigned)r.mod[0].rawReg, (int)r.mod[0].busHw, (int)r.mod[0].busBeginOk,
-           rfStateText(r.mod[1].state), rfStatusText(r.mod[1].status), (unsigned)r.mod[1].ch,
-           (unsigned)r.mod[1].rawReg, (int)r.mod[1].busHw, (int)r.mod[1].busBeginOk);
-  Out.println(g_jsonOut);
+static void execDiag() {
+  NrfResult *slot = nullptr;
+  if (!s_freeQueue || !s_resQueue ||
+      xQueueReceive(s_freeQueue, &slot, pdMS_TO_TICKS(50)) != pdTRUE || !slot) {
+    return;
+  }
+  char *b = slot->json;
+  size_t cap = sizeof(slot->json);
+  size_t pos = 0;
+  int mv = diag_supplyMillivolts();
+
+  jsonAppend(b, cap, pos,
+             "{\"t\":\"diag_result\",\"ok\":true,\"reset_reason\":\"%s\","
+             "\"uptime_s\":%lu,\"free_heap\":%lu,\"min_free_heap\":%lu,"
+             "\"supply_mv\":%d,\"supply_status\":\"%s\",\"state\":\"%s\","
+             "\"mode\":\"%c\",\"lock\":%d,\"pa\":%u,\"dwell\":%u,\"verbosity\":%u,"
+             "\"modules\":[",
+             diag_resetReasonText(),
+             (unsigned long)diag_uptimeSeconds(),
+             (unsigned long)diag_freeHeap(),
+             (unsigned long)diag_minFreeHeap(),
+             mv, diag_supplyVerdict(mv),
+             g_state == CTRL_RUNNING ? "running" : "standby",
+             g_mode, (int)g_lockedChannel, (unsigned)g_paLevel,
+             (unsigned)g_dwell, (unsigned)log_verbosity());
+
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+    const RfModule *m = g_modules[i];
+    bool enabled = (g_enabledMask & (1U << i)) != 0;
+    jsonAppend(b, cap, pos,
+               "%s{\"id\":%u,\"name\":\"%s\",\"en\":%s,\"state\":\"%s\","
+               "\"status\":\"%s\",\"ch\":%u,\"freq\":%u,\"bus\":\"%s\"}",
+               i > 0 ? "," : "",
+               (unsigned)(i + 1), m->name(), enabled ? "true" : "false",
+               rfStateText(m->state()), rfStatusText(m->status()),
+               (unsigned)m->channel(), 2400U + m->channel(),
+               m->busUp() ? "up" : "down");
+  }
+  jsonAppend(b, cap, pos, "]}");
+
+  if (xQueueSend(s_resQueue, &slot, 0) != pdTRUE) {
+    xQueueSend(s_freeQueue, &slot, 0);
+  }
+}
+
+static void execSelfTest() {
+  bool wasRunning[MODULE_COUNT] = {false};
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+    wasRunning[i] = g_modules[i]->running();
+    if (wasRunning[i]) g_modules[i]->stopCarrier();
+  }
+
+  NrfResult *slot = nullptr;
+  if (!s_freeQueue || !s_resQueue ||
+      xQueueReceive(s_freeQueue, &slot, pdMS_TO_TICKS(50)) != pdTRUE || !slot) {
+    return;
+  }
+  char *b = slot->json;
+  size_t cap = sizeof(slot->json);
+  size_t pos = 0;
+
+  bool allOk = true;
+  jsonAppend(b, cap, pos, "{\"t\":\"selftest_result\",\"modules\":[");
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+    RfModule *m = g_modules[i];
+    RfStatus r = ensureReady(m, i) ? m->selfTest() : m->status();
+    if (r != RF_OK) allOk = false;
+    jsonAppend(b, cap, pos,
+               "%s{\"id\":%u,\"name\":\"%s\",\"ok\":%s,\"state\":\"%s\","
+               "\"status\":\"%s\",\"ch\":%u,\"freq\":%u}",
+               i > 0 ? "," : "",
+               (unsigned)(i + 1), m->name(),
+               r == RF_OK ? "true" : "false",
+               rfStateText(m->state()), rfStatusText(r),
+               (unsigned)m->channel(), 2400U + m->channel());
+  }
+  jsonAppend(b, cap, pos, "],\"ok\":%s}", allOk ? "true" : "false");
+
+  bool anyRunning = false;
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+    if (wasRunning[i] && g_modules[i]->startCarrier(g_paLevel)) anyRunning = true;
+  }
+  if (g_state == CTRL_RUNNING && !anyRunning) g_state = CTRL_STANDBY;
+
+  if (xQueueSend(s_resQueue, &slot, 0) != pdTRUE) {
+    xQueueSend(s_freeQueue, &slot, 0);
+  }
+}
+
+static void execScan(uint16_t passes, bool isSearch) {
+  const char *resultType = isSearch ? "search_result" : "scan_result";
+  const ChannelSet *set = channelSetById(g_mode);
+  if (set == nullptr) {
+    emitJsonLine("{\"t\":\"%s\",\"ok\":false,\"msg\":\"no channel set for mode\"}", resultType);
+    return;
+  }
+
+  // Silence all co-located carriers first so one TX cannot saturate the other's LNA.
+  bool wasRunning[MODULE_COUNT] = {false};
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+    wasRunning[i] = g_modules[i]->running();
+    if (wasRunning[i]) g_modules[i]->stopCarrier();
+  }
+
+  static uint16_t hitCounts[SCAN_MAX_CHANNELS];
+  size_t n = set->count < SCAN_MAX_CHANNELS ? set->count : SCAN_MAX_CHANNELS;
+
+  NrfResult *slot = nullptr;
+  if (!s_freeQueue || !s_resQueue ||
+      xQueueReceive(s_freeQueue, &slot, pdMS_TO_TICKS(50)) != pdTRUE || !slot) {
+    for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+      if (wasRunning[i]) g_modules[i]->startCarrier(g_paLevel);
+    }
+    return;
+  }
+
+  char *b = slot->json;
+  size_t cap = sizeof(slot->json);
+  size_t pos = 0;
+  bool anyModuleOk = false;
+
+  jsonAppend(b, cap, pos,
+             "{\"t\":\"%s\",\"mode\":\"%c\",\"mode_name\":\"%s\","
+             "\"passes\":%u,\"dwell_us\":%u,\"channels_total\":%u,\"modules\":[",
+             resultType, g_mode, set->name,
+             (unsigned)passes, (unsigned)SCAN_DWELL_US, (unsigned)n);
+
+  bool firstMod = true;
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+    if ((g_enabledMask & (1U << i)) == 0) continue;
+    RfModule *m = g_modules[i];
+    if (!firstMod) jsonAppend(b, cap, pos, ",");
+    firstMod = false;
+
+    if (!ensureReady(m, i)) {
+      jsonAppend(b, cap, pos,
+                 "{\"id\":%u,\"name\":\"%s\",\"ok\":false,\"status\":\"%s\",\"active_count\":0,\"hits\":[]}",
+                 (unsigned)(i + 1), m->name(), rfStatusText(m->status()));
+      continue;
+    }
+
+    anyModuleOk = true;
+    uint16_t active = m->scanRPD(set->table, n, hitCounts, passes);
+    jsonAppend(b, cap, pos,
+               "{\"id\":%u,\"name\":\"%s\",\"ok\":true,\"status\":\"ok\",\"active_count\":%u,\"hits\":[",
+               (unsigned)(i + 1), m->name(), (unsigned)active);
+
+    bool firstHit = true;
+    for (size_t k = 0; k < n; k++) {
+      if (hitCounts[k] > 0) {
+        jsonAppend(b, cap, pos, "%s{\"ch\":%u,\"freq\":%u,\"hits\":%u}",
+                   firstHit ? "" : ",",
+                   (unsigned)set->table[k], 2400U + set->table[k],
+                   (unsigned)hitCounts[k]);
+        firstHit = false;
+      }
+    }
+    jsonAppend(b, cap, pos, "]}");
+  }
+  jsonAppend(b, cap, pos, "],\"ok\":%s}", anyModuleOk ? "true" : "false");
+
+  bool anyRunning = false;
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+    if (wasRunning[i] && g_modules[i]->startCarrier(g_paLevel)) anyRunning = true;
+  }
+  if (g_state == CTRL_RUNNING && !anyRunning) {
+    g_state = CTRL_STANDBY;
+    LOG_W("no carriers resumed after scan");
+  }
+
+  if (xQueueSend(s_resQueue, &slot, 0) != pdTRUE) {
+    xQueueSend(s_freeQueue, &slot, 0);
+  }
+}
+
+static void execMode(char id) {
+  g_mode = id;
+  const ChannelSet *set = channelSetById(id);
+  emitJsonLine("{\"t\":\"config_result\",\"cmd\":\"mode\",\"ok\":true,\"mode\":\"%c\","
+               "\"mode_name\":\"%s\",\"channels\":%u,\"lock\":%d}",
+               g_mode, modeName(g_mode),
+               set ? (unsigned)set->count : 0U, (int)g_lockedChannel);
+}
+
+static void execDwell(bool hasArg, uint16_t val) {
+  if (hasArg) g_dwell = val;
+  emitJsonLine("{\"t\":\"config_result\",\"cmd\":\"dwell\",\"ok\":true,\"dwell_us\":%u}",
+               (unsigned)g_dwell);
+}
+
+static void execPower(bool hasArg, uint8_t val) {
+  if (hasArg) {
+    g_paLevel = val;
+    bool anyRunning = false;
+    for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+      g_modules[i]->setPaLevel(g_paLevel);
+      if (g_modules[i]->running()) anyRunning = true;
+    }
+    if (g_state == CTRL_RUNNING && !anyRunning) g_state = CTRL_STANDBY;
+  }
+  emitJsonLine("{\"t\":\"config_result\",\"cmd\":\"power\",\"ok\":true,\"pa\":%u}",
+               (unsigned)g_paLevel);
+}
+
+static void execChannel(bool hasArg, int16_t val) {
+  if (hasArg) {
+    g_lockedChannel = val;
+    if (g_lockedChannel >= 0) {
+      for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+        if (g_modules[i]->ready()) g_modules[i]->setChannel((uint8_t)g_lockedChannel);
+      }
+    }
+  }
+  emitJsonLine("{\"t\":\"config_result\",\"cmd\":\"ch\",\"ok\":true,\"lock\":%d,\"auto\":%s}",
+               (int)g_lockedChannel, g_lockedChannel < 0 ? "true" : "false");
+}
+
+static void execEnable(bool hasArg, uint8_t newMask) {
+  if (hasArg) {
+    g_enabledMask = newMask;
+    if (g_state == CTRL_RUNNING) {
+      uint8_t up = 0;
+      for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+        bool want = (g_enabledMask & (1U << i)) != 0;
+        RfModule *m = g_modules[i];
+        if (!want) {
+          m->stopCarrier();
+        } else {
+          if (!m->running() && ensureReady(m, i) && m->selfTest() == RF_OK) {
+            if (g_lockedChannel >= 0) m->setChannel((uint8_t)g_lockedChannel);
+            m->startCarrier(g_paLevel);
+          }
+          if (m->running()) up++;
+        }
+      }
+      if (up == 0) g_state = CTRL_STANDBY;
+    }
+  }
+  emitJsonLine("{\"t\":\"config_result\",\"cmd\":\"en\",\"ok\":true,\"enabled\":\"%s\",\"mask\":%u}",
+               g_enabledMask == 0x03 ? "both" : (g_enabledMask == 0x01 ? "1" : "2"),
+               (unsigned)g_enabledMask);
+}
+
+static void execDebug(bool hasArg, uint8_t val) {
+  if (hasArg) log_setVerbosity(val);
+  emitJsonLine("{\"t\":\"config_result\",\"cmd\":\"debug\",\"ok\":true,\"verbosity\":%u}",
+               (unsigned)log_verbosity());
+}
+
+static void execHelp() {
+  emitJsonLine("{\"t\":\"help_result\",\"ok\":true,"
+               "\"commands\":[\"start\",\"stop\",\"status\",\"diag\",\"selftest\","
+               "\"scan [1..200]\",\"search [1..200]\",\"ch [0..125|auto]\","
+               "\"power [0..3]\",\"en [1|2|both]\",\"dwell [0..5000]\","
+               "\"debug [0..4]\",\"help\"],"
+               "\"modes\":{\"r\":\"random bluetooth odd/even\",\"w\":\"wifi\","
+               "\"b\":\"ble advertising\",\"u\":\"usb wireless\","
+               "\"v\":\"video streaming\",\"c\":\"rc toys/drones\","
+               "\"f\":\"full spectrum\",\"i\":\"ism band 2401-2483 MHz\"}}");
+}
+
+static void processCommand(const NrfCmd &cmd) {
+  switch (cmd.type) {
+    case CMD_START:    execStart(); break;
+    case CMD_STOP:     execStop(); break;
+    case CMD_STATUS:   execStatus(); break;
+    case CMD_DIAG:     execDiag(); break;
+    case CMD_SELFTEST: execSelfTest(); break;
+    case CMD_SCAN:     execScan(cmd.hasArg ? (uint16_t)cmd.arg : 1U, false); break;
+    case CMD_SEARCH:   execScan(cmd.hasArg ? (uint16_t)cmd.arg : 1U, true); break;
+    case CMD_MODE:     execMode((char)cmd.arg); break;
+    case CMD_DWELL:    execDwell(cmd.hasArg, (uint16_t)cmd.arg); break;
+    case CMD_POWER:    execPower(cmd.hasArg, (uint8_t)cmd.arg); break;
+    case CMD_CHANNEL:  execChannel(cmd.hasArg, (int16_t)cmd.arg); break;
+    case CMD_ENABLE:   execEnable(cmd.hasArg, (uint8_t)cmd.arg); break;
+    case CMD_DEBUG:    execDebug(cmd.hasArg, (uint8_t)cmd.arg); break;
+    case CMD_HELP:     execHelp(); break;
+  }
 }
 
 // ---------------------------------------------------------------------------
-//  Console Parser (Single Serial Reader)
+//  Hop engine (runs on Core-1 worker task when g_state == CTRL_RUNNING)
 // ---------------------------------------------------------------------------
-struct LineBuffer {
+static void hopStep() {
+  if (g_lockedChannel >= 0) {
+    for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+      if (g_modules[i]->running()) g_modules[i]->setChannel((uint8_t)g_lockedChannel);
+    }
+    serviceWatchdog();
+    return;
+  }
+
+  const ChannelSet *odd = channelSetById('o');
+  const ChannelSet *even = channelSetById('e');
+  const ChannelSet *set = channelSetById(g_mode);
+  if (set == nullptr) return;
+
+  for (uint8_t i = 0; i < MODULE_COUNT; i++) {
+    RfModule *m = g_modules[i];
+    if (!m->running()) continue;
+    const ChannelSet *src = set;
+    if (g_mode == 'r') src = (i == 0) ? odd : even;
+    if (src == nullptr || src->count == 0) continue;
+    m->setChannel(src->table[random((long)src->count)]);
+  }
+
+  if (g_dwell > 0) delayMicroseconds(random((long)g_dwell));
+  g_hopCount++;
+  serviceWatchdog();
+}
+
+// ---------------------------------------------------------------------------
+//  Core-1 FreeRTOS radio worker task
+// ---------------------------------------------------------------------------
+static void nrfWorkerTask(void *pvParameters) {
+  (void)pvParameters;
+  NrfCmd cmd;
+  for (;;) {
+    TickType_t waitTicks = (g_state == CTRL_RUNNING) ? 0 : pdMS_TO_TICKS(50);
+    if (s_cmdQueue != nullptr && xQueueReceive(s_cmdQueue, &cmd, waitTicks) == pdTRUE) {
+      processCommand(cmd);
+    }
+    if (g_state == CTRL_RUNNING) {
+      hopStep();
+      checkSupplyGuard();
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Console parser & dispatcher (runs in nrfScannerPoll on loopTask)
+// ---------------------------------------------------------------------------
+struct LineBuf {
   char buf[CONSOLE_BUF];
   size_t len = 0;
   bool overflow = false;
 };
 
-static LineBuffer g_usbLine;
-#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-static LineBuffer g_uartLine;
-#endif
-static uint16_t g_defaultPasses = 1;
+static LineBuf s_usbLine;
+static LineBuf s_uartLine;
 
-static bool parseUint(const char *s, long minVal, long maxVal, long &out) {
-  if (!s || !s[0]) return false;
-  char *end = nullptr;
-  long v = strtol(s, &end, 10);
-  if (end == s || *end != '\0' || v < minVal || v > maxVal) return false;
-  out = v;
-  return true;
+static void dispatchCmd(const char *cmdName, NrfCmdType type, bool hasArg = false, int32_t arg = 0) {
+  if (!s_cmdQueue) return;
+  char ackBuf[160];
+  if (hasArg) {
+    snprintf(ackBuf, sizeof(ackBuf), "{\"t\":\"ack\",\"cmd\":\"%s\",\"arg\":%ld}",
+             cmdName, (long)arg);
+  } else {
+    snprintf(ackBuf, sizeof(ackBuf), "{\"t\":\"ack\",\"cmd\":\"%s\"}", cmdName);
+  }
+  Out.println(ackBuf);
+
+  NrfCmd cmd{type, arg, hasArg};
+  xQueueOverwrite(s_cmdQueue, &cmd);
 }
 
-static bool buildChannelList(const char *spec, ScannerCommand &cmd) {
-  const ChannelSet *set = channelSetByNameOrId(spec);
-  if (set != nullptr) {
-    uint8_t n = set->count < SCAN_MAX_CHANNELS ? (uint8_t)set->count : SCAN_MAX_CHANNELS;
-    memcpy(cmd.channels, set->table, n);
-    cmd.channelCount = n;
-    strlcpy(cmd.label, set->name, sizeof(cmd.label));
-    return true;
-  }
-
-  const char *dash = strchr(spec, '-');
-  if (dash != nullptr) {
-    char left[8] = {0};
-    size_t lLen = (size_t)(dash - spec);
-    if (lLen == 0 || lLen >= sizeof(left)) return false;
-    memcpy(left, spec, lLen);
-    long a = 0, b = 0;
-    if (!parseUint(left, 0, 125, a) || !parseUint(dash + 1, 0, 125, b) || a > b) return false;
-    uint8_t n = 0;
-    for (long ch = a; ch <= b && n < SCAN_MAX_CHANNELS; ch++) {
-      cmd.channels[n++] = (uint8_t)ch;
-    }
-    cmd.channelCount = n;
-    snprintf(cmd.label, sizeof(cmd.label), "%ld-%ld", a, b);
-    return n > 0;
-  }
-
-  long singleCh = 0;
-  if (parseUint(spec, 0, 125, singleCh)) {
-    cmd.channels[0] = (uint8_t)singleCh;
-    cmd.channelCount = 1;
-    snprintf(cmd.label, sizeof(cmd.label), "ch%ld", singleCh);
-    return true;
-  }
-  return false;
+static void emitCmdError(const char *cmdName, const char *msg) {
+  char safeCmd[32];
+  char errBuf[192];
+  jsonEscape(cmdName, safeCmd, sizeof(safeCmd));
+  snprintf(errBuf, sizeof(errBuf), "{\"t\":\"cmd_error\",\"cmd\":\"%s\",\"msg\":\"%s\"}",
+           safeCmd, msg);
+  Out.println(errBuf);
 }
 
-static bool jsonExtractString(const char *json, const char *key, char *out, size_t outLen) {
-  char pat[24];
-  snprintf(pat, sizeof(pat), "\"%s\"", key);
-  const char *p = strstr(json, pat);
-  if (!p) return false;
-  p = strchr(p + strlen(pat), ':');
-  if (!p) return false;
-  while (*++p == ' ' || *p == '\t') {}
-  if (*p != '"') return false;
-  p++;
-  size_t i = 0;
-  while (p[i] && p[i] != '"' && i + 1 < outLen) {
-    out[i] = p[i];
-    i++;
-  }
-  out[i] = '\0';
-  return i > 0;
-}
-
-static bool jsonExtractLong(const char *json, const char *key, long &out) {
-  char pat[24];
-  snprintf(pat, sizeof(pat), "\"%s\"", key);
-  const char *p = strstr(json, pat);
-  if (!p) return false;
-  p = strchr(p + strlen(pat), ':');
-  if (!p) return false;
-  while (*++p == ' ' || *p == '\t') {}
-  char *end = nullptr;
-  long v = strtol(p, &end, 10);
-  if (end == p) return false;
-  out = v;
-  return true;
-}
-
-static void dispatchCommand(const char *cmd, const char *arg1, const char *arg2, uint32_t reqId) {
-  static ScannerCommand sc;
-  memset(&sc, 0, sizeof(sc));
-  sc.reqId = reqId;
-  sc.passes = g_defaultPasses;
-
-  if (!strcasecmp(cmd, "scan")) {
-    const char *band = arg1 ? arg1 : "ism";
-    if (!buildChannelList(band, sc)) {
-      LOG_W("invalid scan band '%s'", band);
-      return;
-    }
-    if (arg2) {
-      long p = 0;
-      if (parseUint(arg2, 1, SCAN_MAX_PASSES, p)) sc.passes = (uint16_t)p;
-    }
-    sc.type = CMD_SCAN_ONCE;
-    emitAck(reqId, "scan");
-    xQueueOverwrite(g_cmdQueue, &sc);
-  }
-  else if (!strcasecmp(cmd, "search")) {
-    const char *target = arg1 ? arg1 : "ism";
-    if (!buildChannelList(target, sc)) {
-      LOG_W("invalid search target '%s' (use wifi|ble|bt|ism|full|<ch>|<a-b>)", target);
-      return;
-    }
-    if (arg2) {
-      long p = 0;
-      if (parseUint(arg2, 1, SCAN_MAX_PASSES, p)) sc.passes = (uint16_t)p;
-    }
-    sc.type = CMD_SEARCH_START;
-    char extra[40];
-    snprintf(extra, sizeof(extra), "\"target\":\"%s\"", sc.label);
-    emitAck(reqId, "search", extra);
-    xQueueOverwrite(g_cmdQueue, &sc);
-  }
-  else if (!strcasecmp(cmd, "setchannel") || !strcasecmp(cmd, "ch")) {
-    long ch = 0;
-    if (!parseUint(arg1, 0, 125, ch)) {
-      LOG_W("setchannel requires 0..125");
-      return;
-    }
-    sc.type = CMD_SET_CHANNEL;
-    sc.parkCh = (uint8_t)ch;
-    char extra[48];
-    snprintf(extra, sizeof(extra), "\"ch\":%ld,\"mhz\":%ld", ch, 2400L + ch);
-    emitAck(reqId, "setchannel", extra);
-    xQueueOverwrite(g_cmdQueue, &sc);
-  }
-  else if (!strcasecmp(cmd, "stop")) {
-    sc.type = CMD_STOP;
-    emitAck(reqId, "stop");
-    xQueueOverwrite(g_cmdQueue, &sc);
-  }
-  else if (!strcasecmp(cmd, "status")) {
-    sc.type = CMD_STATUS_REQ;
-    xQueueOverwrite(g_cmdQueue, &sc);
-  }
-  else if (!strcasecmp(cmd, "selftest")) {
-    sc.type = CMD_SELFTEST;
-    emitAck(reqId, "selftest");
-    xQueueOverwrite(g_cmdQueue, &sc);
-  }
-  else if (!strcasecmp(cmd, "passes")) {
-    long p = 0;
-    if (!parseUint(arg1, 1, SCAN_MAX_PASSES, p)) {
-      LOG_W("passes range 1..%u", (unsigned)SCAN_MAX_PASSES);
-      return;
-    }
-    g_defaultPasses = (uint16_t)p;
-    LOG_I("default scan passes = %u", (unsigned)g_defaultPasses);
-  }
-  else if (!strcasecmp(cmd, "debug")) {
-    long v = 0;
-    if (!parseUint(arg1, 0, 4, v)) {
-      LOG_W("debug range 0..4");
-      return;
-    }
-    g_verbosity = (uint8_t)v;
-    LOG_I("verbosity = %u", (unsigned)g_verbosity);
-  }
-  else if (!strcasecmp(cmd, "help") || !strcmp(cmd, "?")) {
-    LOG_I("cmds: scan [band] [id] | search <band|ch|a-b> [id] | setchannel <0-125> [id] | status [id] | stop [id] | selftest | passes <1-200> | debug <0-4>");
-  }
-  else {
-    LOG_W("unknown command '%s'", cmd);
-  }
-}
-
-static void handleLine(const char *line) {
-  while (*line == ' ' || *line == '\t') line++;
-  if (*line == '\0') return;
-
-  // Optional one-line JSON command branch: {"cmd":"scan","id":12,...}
-  if (*line == '{') {
-    char cmd[20] = {0};
-    char arg1[20] = {0};
-    char arg2[12] = {0};
-    long id = 0, ch = -1, passes = -1;
-    if (!jsonExtractString(line, "cmd", cmd, sizeof(cmd)) &&
-        !jsonExtractString(line, "t", cmd, sizeof(cmd))) {
-      LOG_W("json command missing 'cmd'");
-      return;
-    }
-    jsonExtractLong(line, "id", id);
-    if (jsonExtractLong(line, "ch", ch)) snprintf(arg1, sizeof(arg1), "%ld", ch);
-    else if (!jsonExtractString(line, "target", arg1, sizeof(arg1)))
-      jsonExtractString(line, "mode", arg1, sizeof(arg1));
-    if (jsonExtractLong(line, "passes", passes)) snprintf(arg2, sizeof(arg2), "%ld", passes);
-
-    dispatchCommand(cmd, arg1[0] ? arg1 : nullptr, arg2[0] ? arg2 : nullptr, id > 0 ? (uint32_t)id : 0);
-    return;
-  }
-
-  // Plain-text command (<= 4 tokens, optional trailing numeric request-id)
+static void handleConsoleLine(const char *line) {
   char work[CONSOLE_BUF];
-  strlcpy(work, line, sizeof(work));
+  strncpy(work, line, sizeof(work) - 1);
+  work[sizeof(work) - 1] = '\0';
 
   char *argv[CONSOLE_MAX_TOKENS] = {nullptr};
   uint8_t argc = 0;
@@ -877,36 +1108,123 @@ static void handleLine(const char *line) {
   }
   if (argc == 0) return;
 
-  uint32_t reqId = 0;
-  if (argc >= 2) {
-    long parsedId = 0;
-    bool secondIsArg = (!strcasecmp(argv[0], "setchannel") ||
-                        !strcasecmp(argv[0], "ch") ||
-                        !strcasecmp(argv[0], "passes") ||
-                        !strcasecmp(argv[0], "debug"));
-    if ((!secondIsArg || argc >= 3) && parseUint(argv[argc - 1], 0, 0x7FFFFFFF, parsedId)) {
-      reqId = (uint32_t)parsedId;
-      argc--;
-    }
-  }
+  const char *cmd = argv[0];
+  const char *arg1 = argc > 1 ? argv[1] : nullptr;
 
-  dispatchCommand(argv[0],
-                  argc > 1 ? argv[1] : nullptr,
-                  argc > 2 ? argv[2] : nullptr,
-                  reqId);
+  if (!strcasecmp(cmd, "start")) {
+    dispatchCmd("start", CMD_START);
+  } else if (!strcasecmp(cmd, "stop")) {
+    dispatchCmd("stop", CMD_STOP);
+  } else if (!strcasecmp(cmd, "status")) {
+    dispatchCmd("status", CMD_STATUS);
+  } else if (!strcasecmp(cmd, "diag")) {
+    dispatchCmd("diag", CMD_DIAG);
+  } else if (!strcasecmp(cmd, "selftest")) {
+    dispatchCmd("selftest", CMD_SELFTEST);
+  } else if (!strcasecmp(cmd, "scan") || !strcasecmp(cmd, "search")) {
+    bool isSearch = !strcasecmp(cmd, "search");
+    const char *canon = isSearch ? "search" : "scan";
+    NrfCmdType ctype = isSearch ? CMD_SEARCH : CMD_SCAN;
+    if (arg1 == nullptr) {
+      dispatchCmd(canon, ctype, true, 1);
+    } else {
+      char *end = nullptr;
+      long p = strtol(arg1, &end, 10);
+      if (end == arg1 || *end != '\0' || p < 1 || p > SCAN_MAX_PASSES) {
+        emitCmdError(canon, "passes range 1..200");
+        return;
+      }
+      dispatchCmd(canon, ctype, true, (int32_t)p);
+    }
+  } else if (!strcasecmp(cmd, "dwell")) {
+    if (arg1 == nullptr) {
+      dispatchCmd("dwell", CMD_DWELL, false, 0);
+    } else {
+      char *end = nullptr;
+      long v = strtol(arg1, &end, 10);
+      if (end == arg1 || *end != '\0' || v < 0 || v > 5000) {
+        emitCmdError("dwell", "dwell range 0..5000 us");
+        return;
+      }
+      dispatchCmd("dwell", CMD_DWELL, true, (int32_t)v);
+    }
+  } else if (!strcasecmp(cmd, "power")) {
+    if (arg1 == nullptr) {
+      dispatchCmd("power", CMD_POWER, false, 0);
+    } else {
+      char *end = nullptr;
+      long v = strtol(arg1, &end, 10);
+      if (end == arg1 || *end != '\0' || v < 0 || v > 3) {
+        emitCmdError("power", "power range 0..3");
+        return;
+      }
+      dispatchCmd("power", CMD_POWER, true, (int32_t)v);
+    }
+  } else if (!strcasecmp(cmd, "ch")) {
+    if (arg1 == nullptr) {
+      dispatchCmd("ch", CMD_CHANNEL, false, 0);
+    } else if (!strcasecmp(arg1, "auto")) {
+      dispatchCmd("ch", CMD_CHANNEL, true, -1);
+    } else {
+      char *end = nullptr;
+      long v = strtol(arg1, &end, 10);
+      if (end == arg1 || *end != '\0' || v < 0 || v > 125) {
+        emitCmdError("ch", "ch range 0..125 or auto");
+        return;
+      }
+      dispatchCmd("ch", CMD_CHANNEL, true, (int32_t)v);
+    }
+  } else if (!strcasecmp(cmd, "en")) {
+    if (arg1 == nullptr) {
+      dispatchCmd("en", CMD_ENABLE, false, 0);
+    } else if (!strcmp(arg1, "1")) {
+      dispatchCmd("en", CMD_ENABLE, true, 0x01);
+    } else if (!strcmp(arg1, "2")) {
+      dispatchCmd("en", CMD_ENABLE, true, 0x02);
+    } else if (!strcasecmp(arg1, "both") || !strcasecmp(arg1, "all") || !strcmp(arg1, "12")) {
+      dispatchCmd("en", CMD_ENABLE, true, 0x03);
+    } else {
+      emitCmdError("en", "en options: 1 | 2 | both");
+    }
+  } else if (!strcasecmp(cmd, "debug")) {
+    if (arg1 == nullptr) {
+      dispatchCmd("debug", CMD_DEBUG, false, 0);
+    } else {
+      char *end = nullptr;
+      long v = strtol(arg1, &end, 10);
+      if (end == arg1 || *end != '\0' || v < 0 || v > 4) {
+        emitCmdError("debug", "verbosity range 0..4");
+        return;
+      }
+      dispatchCmd("debug", CMD_DEBUG, true, (int32_t)v);
+    }
+  } else if (!strcasecmp(cmd, "help") || !strcmp(cmd, "?")) {
+    dispatchCmd("help", CMD_HELP);
+  } else if (strlen(cmd) == 1) {
+    char id = (char)tolower((unsigned char)cmd[0]);
+    if (modeIsValid(id)) {
+      char mStr[2] = {id, '\0'};
+      dispatchCmd(mStr, CMD_MODE, true, (int32_t)id);
+    } else {
+      emitCmdError(cmd, "unknown command");
+    }
+  } else {
+    emitCmdError(cmd, "unknown command");
+  }
 }
 
-static void feedStream(Stream &port, LineBuffer &lb) {
+static void pollStream(Stream &port, LineBuf &lb) {
   while (port.available()) {
     char c = (char)port.read();
+
     if (c == '\r') continue;
 
     if (c == '\n') {
       if (lb.overflow) {
-        LOG_W("console line too long, discarded");
+        LOG_W("line too long, discarded");
       } else if (lb.len > 0) {
         lb.buf[lb.len] = '\0';
-        handleLine(lb.buf);
+        handleConsoleLine(lb.buf);
       }
       lb.len = 0;
       lb.overflow = false;
@@ -928,56 +1246,57 @@ static void feedStream(Stream &port, LineBuffer &lb) {
 }
 
 // ---------------------------------------------------------------------------
-//  Public API
+//  Public entry points
 // ---------------------------------------------------------------------------
 void nrfScannerBegin() {
+  if (s_initialized) return;
+
 #if SUPPLY_SENSE_PIN >= 0
   analogReadResolution(12);
   analogSetPinAttenuation(SUPPLY_SENSE_PIN, ADC_11db);
 #endif
 
-  g_cmdQueue = xQueueCreate(1, sizeof(ScannerCommand));
-  g_resQueue = xQueueCreate(4, sizeof(ScannerResult));
+  s_lastYieldUs = (uint64_t)esp_timer_get_time();
 
-  xTaskCreatePinnedToCore(
-    nrfScannerTask,
-    "nrf_scan",
-    4096,
-    nullptr,
-    1,
-    nullptr,
-    1
-  );
+  s_cmdQueue = xQueueCreate(1, sizeof(NrfCmd));
+  s_freeQueue = xQueueCreate(RESULT_POOL_SIZE, sizeof(NrfResult *));
+  s_resQueue = xQueueCreate(RESULT_POOL_SIZE, sizeof(NrfResult *));
 
-  LOG_I("dual-nRF24 scanner ready (FSPI + HSPI on core 1)");
+  if (s_freeQueue != nullptr) {
+    for (size_t i = 0; i < RESULT_POOL_SIZE; i++) {
+      NrfResult *slot = &s_resPool[i];
+      xQueueSend(s_freeQueue, &slot, 0);
+    }
+  }
+
+  if (s_cmdQueue != nullptr && s_freeQueue != nullptr && s_resQueue != nullptr) {
+    xTaskCreatePinnedToCore(
+      nrfWorkerTask,
+      "nrf_scanner",
+      6144,
+      nullptr,
+      1,
+      &s_workerTask,
+      1
+    );
+    s_initialized = true;
+    LOG_I("nRF24 scanner ready (FSPI M1: CE=5 CSN=6 SCK=12 MISO=13 MOSI=11 | HSPI M2: CE=7 CSN=15 SCK=16 MISO=17 MOSI=18)");
+  } else {
+    LOG_E("nRF24 scanner queue allocation failed");
+  }
 }
 
 void nrfScannerPoll() {
-  feedStream(Serial, g_usbLine);
-#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-  feedStream(Serial0, g_uartLine);
-#endif
+  if (!s_initialized) return;
 
-  static ScannerResult res;
-  while (g_resQueue && xQueueReceive(g_resQueue, &res, 0) == pdTRUE) {
-    switch (res.type) {
-      case RES_SCAN:
-      case RES_SEARCH:
-        emitSweepResult(res);
-        break;
-      case RES_STATUS:
-        emitStatusResult(res);
-        break;
-      case RES_SELFTEST:
-        emitStatusResult(res);
-        LOG_I("selftest m1=%s m2=%s",
-              rfStatusText(res.mod[0].status),
-              rfStatusText(res.mod[1].status));
-        break;
-      case RES_SUPPLY_TRIP:
-        LOG_E("supply guard tripped (%d mV < %d mV) - radios powered down",
-              res.supplyMv, SUPPLY_MIN_MV);
-        break;
+  NrfResult *res = nullptr;
+  while (xQueueReceive(s_resQueue, &res, 0) == pdTRUE) {
+    if (res != nullptr) {
+      Out.println(res->json);
+      xQueueSend(s_freeQueue, &res, 0);
     }
   }
+
+  pollStream(Serial, s_usbLine);
+  pollStream(Serial0, s_uartLine);
 }
