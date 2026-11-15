@@ -2,6 +2,9 @@
 """Phase P1 — pure network helpers: scan parse, AP profile builder, captive DNS."""
 from __future__ import annotations
 
+import logging
+
+import core.state as cstate
 from core import provisioning_net as N
 
 
@@ -51,6 +54,33 @@ def test_build_ap_profile_args_hidden():
     args = N.build_ap_profile_args({"ap_hidden": True})
     m = args["modify"]
     assert m[m.index("802-11-wireless.hidden") + 1] == "yes"
+
+
+def _backend():
+    # self_link_reason runs no nmcli, so a backend with no real settings is fine.
+    return N.NmcliBackend(settings_fn=lambda: {}, config=None)
+
+
+def test_self_link_guard_fails_closed_on_exception(monkeypatch, caplog):
+    def boom(ifname):
+        raise RuntimeError("route lookup blew up")
+    monkeypatch.setattr(cstate, "self_link_reason", boom)
+    with caplog.at_level(logging.ERROR, logger="sentinel.provisioning.net"):
+        reason = _backend().self_link_reason("wlan0")
+    assert reason != ""                               # FAIL CLOSED — never permit on error
+    assert "wlan0" in reason and "fail-closed" in reason
+    assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+
+def test_self_link_guard_permits_when_safe(monkeypatch):
+    monkeypatch.setattr(cstate, "self_link_reason", lambda ifname: "")
+    assert _backend().self_link_reason("wlan0") == ""   # normal path unchanged
+
+
+def test_self_link_guard_passes_reason_through(monkeypatch):
+    monkeypatch.setattr(cstate, "self_link_reason",
+                        lambda ifname: f"{ifname} carries the default route")
+    assert _backend().self_link_reason("wlan0") == "wlan0 carries the default route"
 
 
 def test_captive_dns_conf_and_file_roundtrip(tmp_path):

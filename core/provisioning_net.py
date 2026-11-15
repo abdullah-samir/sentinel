@@ -181,11 +181,17 @@ class NmcliBackend(NetworkBackend):
             return False
 
     def self_link_reason(self, ifname: str) -> str:
+        # Normal path unchanged: whatever core.state.self_link_reason returns is passed
+        # through (non-empty = refuse, "" = permit). Only the EXCEPTION path differs: a
+        # crash here must FAIL CLOSED — if the one guard against self-lockout can't run,
+        # refuse to raise the AP rather than assume the interface is safe.
         try:
             from core.state import self_link_reason
             return self_link_reason(ifname) or ""
-        except Exception:  # noqa: BLE001
-            return ""
+        except Exception as e:  # noqa: BLE001
+            log.error("self-link check errored for %s: %s — refusing (fail-closed)",
+                      ifname, e)
+            return f"self-link check errored for {ifname} — refusing (fail-closed)"
 
     def scan(self, ifname: str) -> list:
         try:

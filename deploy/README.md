@@ -244,5 +244,17 @@ which overlaps the portal's `ap_ip:80`. Free `:80` before the live test (e.g.
 unless you tick **Expose the dashboard on the hotspot** (which broadens its bind — a
 conscious, reversible change).
 
+**PRE-FLIGHT — verify the self-link guard sees the uplink (do this FIRST).** Before
+enabling provisioning or raising any AP, while `wlan0` is still the current uplink, run:
+```
+python -c "from core.state import self_link_reason, default_route_iface; \
+           print(default_route_iface()); print(repr(self_link_reason('wlan0')))"
+```
+It must print the **real uplink interface** and a **NON-EMPTY** refusal string for it
+(the guard that stops the AP hijacking your connection). If `default_route_iface()` is
+not the real uplink, or `self_link_reason('<uplink>')` is `''`, **STOP** — the guard
+isn't seeing the route; do not enable provisioning until it does. (The guard also
+fails *closed*: if the check itself errors, the AP is refused, not permitted.)
+
 **The real end-to-end test is supervised** (Ethernet/monitor attached): it is NOT in
 the test suite, and the build never ran nmcli or raised an AP on the live Pi.
