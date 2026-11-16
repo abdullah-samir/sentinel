@@ -1,0 +1,22 @@
+[Unit]
+# Socket-activated forwarder: accepts a connection on the hotspot IP (from the
+# .socket unit) and splices it to the existing dashboard on 127.0.0.1:8000. It
+# runs UNPRIVILEGED and holds no state; the dashboard, its localhost bind, and the
+# tunnel are entirely unaffected. Started on demand by sentinel-mgmt-proxy.socket.
+Description=Sentinel mgmt-hotspot dashboard proxy (-> 127.0.0.1:8000)
+Documentation=file:/home/sentinel/sentinel/deploy/README.md
+Requires=sentinel-mgmt-proxy.socket
+After=sentinel-mgmt-proxy.socket sentinel-dashboard.service
+
+[Service]
+# systemd-socket-proxyd ships with systemd — no extra dependency. It receives the
+# listening fd from the socket unit and connects out to the dashboard.
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=5min 127.0.0.1:8000
+User=sentinel
+Group=sentinel
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+Restart=on-failure
+RestartSec=2

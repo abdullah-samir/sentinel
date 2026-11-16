@@ -287,7 +287,26 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now sentinel-mgmt-ap.service
 ```
 It is a **separate** root unit from `sentinel-provisioning.service` (distinct NM profile
-`sentinel-mgmt-ap`), so the two coexist. To reach the dashboard over this hotspot, also
-tick **Expose the dashboard on the hotspot** in the provisioning section (it broadens
-the dashboard bind beyond localhost). As with P1, the real AP is raised only in a
-supervised live test — the build never ran nmcli or raised an AP on the Pi.
+`sentinel-mgmt-ap`), so the two coexist.
+
+**Reaching the dashboard over the hotspot (additive forwarder).** The dashboard keeps
+its localhost-only bind (`127.0.0.1:8000`) so the ngrok tunnel and everything else are
+unchanged. Instead, a tiny socket-activated forwarder exposes it **only on the hotspot
+gateway IP** — never on the uplink/home LAN:
+```
+sudo cp deploy/systemd/sentinel-mgmt-proxy.socket   /etc/systemd/system/
+sudo cp deploy/systemd/sentinel-mgmt-proxy.service  /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now sentinel-mgmt-proxy.socket
+```
+`sentinel-mgmt-proxy.socket` listens on `10.42.1.1:8000` (`FreeBind` so it binds even
+before the AP is up) and `systemd-socket-proxyd` splices connections to the dashboard on
+`127.0.0.1:8000`. From a phone on the **Sentinel** network: `http://10.42.1.1:8000` or
+`http://sentinel.local:8000` (the AP's dnsmasq resolves `sentinel.local` → the gateway).
+The dashboard's cookies are not Secure-only and it enforces no `Host` allow-list, so this
+works over plain HTTP. **If you change `mgmt_ap_ip` in the dashboard, update the
+`ListenStream=` line in the `.socket` and reload.**
+
+This hotspot (AP on the onboard `wlan2`) and the forwarder were brought up live on this
+Pi and verified (AP beaconing `Sentinel`, `10.42.1.1:8000` serving the login, the home
+LAN IP refusing — not exposed). The uplink `wlan0` was untouched throughout.

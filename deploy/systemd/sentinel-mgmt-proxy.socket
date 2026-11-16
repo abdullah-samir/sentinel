@@ -1,0 +1,20 @@
+[Unit]
+# Sentinel management-hotspot → dashboard forwarder (Phase P2, ADDITIVE).
+# Makes the EXISTING dashboard reachable over the management hotspot WITHOUT
+# changing anything that already works: the dashboard keeps its 127.0.0.1:8000
+# bind, the ngrok tunnel is untouched, and the home-LAN/uplink is NOT exposed.
+# This socket listens ONLY on the hotspot gateway IP, so only clients on the
+# hotspot subnet can reach it. FreeBind lets it bind that address even before the
+# AP is up (at boot, or while the hotspot is toggled off).
+Description=Sentinel mgmt-hotspot dashboard proxy socket (10.42.1.1:8000)
+Documentation=file:/home/sentinel/sentinel/deploy/README.md
+
+[Socket]
+# Hotspot gateway IP only (matches mgmt_ap_ip default). NOT 0.0.0.0 — the uplink
+# and home LAN never see this. If you change mgmt_ap_ip in the dashboard, update
+# this line (and `systemctl daemon-reload; systemctl restart sentinel-mgmt-proxy.socket`).
+ListenStream=10.42.1.1:8000
+FreeBind=true
+
+[Install]
+WantedBy=sockets.target
