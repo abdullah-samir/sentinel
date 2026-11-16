@@ -5,6 +5,7 @@
 
 <div class="panel">
   <h2>Discovered modules ({{ modules|length }})</h2>
+  <div class="table-wrap">
   <table>
     <thead><tr><th>Phase</th><th>Name</th><th>Display</th><th>Category</th><th>Status</th></tr></thead>
     <tbody>
@@ -22,11 +23,13 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 
 <div class="panel">
   <h2>Workflows</h2>
   {% if workflows %}
+  <div class="table-wrap">
   <table>
     <thead><tr><th>Workflow</th><th>Steps</th></tr></thead>
     <tbody>
@@ -35,6 +38,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}<div class="empty">No workflows defined.</div>{% endif %}
 </div>
 {% endblock %}

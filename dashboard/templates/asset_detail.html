@@ -18,12 +18,13 @@
 
 <div class="panel">
   <h2>History ({{ host.history|length }} appearances)</h2>
+  <div class="table-wrap">
   <table>
     <thead><tr><th>Started</th><th>Run</th><th>Workflow</th><th>IP</th><th>Open ports</th><th>Worst</th></tr></thead>
     <tbody>
       {% for h in host.history %}
       <tr>
-        <td class="mono">{{ h.started_at }}</td>
+        <td class="mono"><time datetime="{{ h.started_at }}">{{ h.started_at }}</time></td>
         <td class="mono"><a href="/run/{{ h.run_id }}">{{ h.run_id }}</a></td>
         <td>{{ h.workflow }}</td>
         <td class="mono">{{ h.ip }}</td>
@@ -33,5 +34,6 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endblock %}

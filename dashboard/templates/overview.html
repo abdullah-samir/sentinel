@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% block title %}{{ 'Overview' if show_stats else 'Runs' }}{% endblock %}
-{% macro sorth(key, label) %}
+{% macro sorth(key, label, cls='') %}
   {% set nd = 'asc' if (sort == key and direction == 'desc') else 'desc' %}
-  <th class="sortable"{% if sort == key %} aria-sort="{{ 'descending' if direction == 'desc' else 'ascending' }}"{% endif %}>
+  <th class="sortable {{ cls }}"{% if sort == key %} aria-sort="{{ 'descending' if direction == 'desc' else 'ascending' }}"{% endif %}>
     <a href="?sort={{ key }}&amp;dir={{ nd }}">{{ label }}{% if sort == key %} {{ icon('chevron-down' if direction == 'desc' else 'chevron-up') }}{% endif %}</a>
   </th>
 {% endmacro %}
@@ -69,14 +69,15 @@
       <span id="selcount" class="muted" style="font-size:12px"></span>
     </div>
     {% endif %}
-    <table id="runs">
+    <div class="table-wrap">
+    <table id="runs" class="prio">
       <thead><tr>
-        {% if not readonly %}<th style="width:28px"><input type="checkbox" onclick="toggleAll(this)" aria-label="select all"></th>{% endif %}
+        {% if not readonly %}<th class="col-opt" style="width:28px"><input type="checkbox" onclick="toggleAll(this)" aria-label="select all"></th>{% endif %}
         {{ sorth('date', 'Started') }}
         <th>Run / name</th>
-        {{ sorth('workflow', 'Workflow') }}
-        {{ sorth('target', 'Target') }}
-        {{ sorth('hosts', 'Hosts') }}
+        {{ sorth('workflow', 'Workflow', 'col-opt') }}
+        {{ sorth('target', 'Target', 'col-opt') }}
+        {{ sorth('hosts', 'Hosts', 'col-opt') }}
         {{ sorth('findings', 'Findings') }}
         {{ sorth('grade', 'Grade') }}
         <th>Actions</th>
@@ -84,14 +85,14 @@
       <tbody>
         {% for r in rows %}
         <tr class="runrow">
-          {% if not readonly %}<td><input type="checkbox" class="rowcheck" value="{{ r.run_id }}" onclick="updateCount()"></td>{% endif %}
-          <td class="mono">{{ r.started_at }}</td>
+          {% if not readonly %}<td class="col-opt"><input type="checkbox" class="rowcheck" value="{{ r.run_id }}" onclick="updateCount()"></td>{% endif %}
+          <td class="mono"><time datetime="{{ r.started_at }}">{{ r.started_at }}</time></td>
           <td class="mono"><a href="/run/{{ r.run_id }}">{{ r.run_id }}</a>
             {% if r.name %}<div>{{ r.name }}</div>{% endif %}
             {% if r.tags %}<div class="muted" style="font-size:11px">{{ r.tags }}</div>{% endif %}</td>
-          <td>{{ r.workflow }}</td>
-          <td class="mono">{{ r.target }}</td>
-          <td>{{ r.hosts_up }}</td>
+          <td class="col-opt">{{ r.workflow }}</td>
+          <td class="mono col-opt">{{ r.target }}</td>
+          <td class="col-opt">{{ r.hosts_up }}</td>
           <td>{% for s in sev_order %}{% if r.by_severity[s] %}<span class="sev"
               style="color:{{ sev_color[s] }}">{{ s[0]|upper }}{{ r.by_severity[s] }}</span>{% endif %}{% endfor %}</td>
           <td><span class="gbadge" style="background:{{ r.grade_color }}">{{ r.grade }}</span></td>
@@ -123,6 +124,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </form>
   {% else %}
   <div class="empty">No runs yet. <a href="/scan">Start a scan</a>, or run one from the CLI.</div>

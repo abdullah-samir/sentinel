@@ -18,7 +18,8 @@
 
 <div class="panel">
   <h2>Interfaces (<span id="if-count">{{ panel.count }}</span>)</h2>
-  <table>
+  <div class="table-wrap">
+  <table class="stacktable">
     <thead><tr>
       <th>Interface</th><th>Type</th><th>Driver</th><th>Mode</th>
       <th>Link</th><th>Reservation</th>
@@ -26,15 +27,15 @@
     <tbody id="if-body">
     {% for i in panel.interfaces %}
       <tr>
-        <td class="mono">{{ i.iface }}
+        <td class="mono" data-label="Interface">{{ i.iface }}
           {% if i.default_route %}<span class="pill" style="background:#2a1d0e;color:#F5953E">uplink</span>{% endif %}
           {% if i.ssh %}<span class="pill" style="background:#2a1d0e;color:#F5953E">ssh</span>{% endif %}
         </td>
-        <td>{{ i.kind }}{% if i.wifi %} · Wi-Fi{% endif %}</td>
-        <td class="mono">{{ i.driver }}</td>
-        <td class="mono" style="{{ 'color:#2DD4BF;font-weight:700' if i.mode == 'monitor' }}">{{ i.mode }}</td>
-        <td class="mono muted">{{ i.operstate or '—' }}</td>
-        <td>
+        <td data-label="Type">{{ i.kind }}{% if i.wifi %} · Wi-Fi{% endif %}</td>
+        <td class="mono" data-label="Driver">{{ i.driver }}</td>
+        <td class="mono" data-label="Mode" style="{{ 'color:#2DD4BF;font-weight:700' if i.mode == 'monitor' }}">{{ i.mode }}</td>
+        <td class="mono muted" data-label="Link">{{ i.operstate or '—' }}</td>
+        <td data-label="Reservation">
           {% if i.busy %}
             <span class="pill" style="background:#1d2a1e;color:#2DD4BF">busy</span>
             <span class="muted">in use by {{ i.holder }}</span>
@@ -46,6 +47,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
   {% if not panel.interfaces %}
     <div class="empty">No network interfaces found.</div>
   {% endif %}
@@ -116,6 +118,7 @@
 
 <div class="panel">
   <h2>Attached hardware</h2>
+  <div class="table-wrap">
   <table>
     <thead><tr><th>Device</th><th>Port</th><th>Status</th><th>Last seen</th></tr></thead>
     <tbody>
@@ -137,6 +140,7 @@
       </tr>
     </tbody>
   </table>
+  </div>
   <p class="muted" style="font-size:12px;margin:8px 0 0">
     Read-only — detection node status from the latest
     <span class="mono">esp_monitor</span> run.
@@ -158,31 +162,32 @@
     s.textContent = text;
     return s;
   }
-  function td(cls) { var e = document.createElement("td"); if (cls) e.className = cls; return e; }
+  function td(cls, label) { var e = document.createElement("td"); if (cls) e.className = cls;
+    if (label) e.setAttribute("data-label", label); return e; }
 
   function renderRow(i) {
     var tr = document.createElement("tr");
 
-    var name = td("mono");
+    var name = td("mono", "Interface");
     name.appendChild(document.createTextNode(i.iface + " "));
     if (i.default_route) name.appendChild(pill("uplink", "#2a1d0e", "#F5953E"));
     if (i.ssh) { name.appendChild(document.createTextNode(" ")); name.appendChild(pill("ssh", "#2a1d0e", "#F5953E")); }
     tr.appendChild(name);
 
-    var type = td();
+    var type = td(null, "Type");
     type.textContent = i.kind + (i.wifi ? " · Wi-Fi" : "");
     tr.appendChild(type);
 
-    var drv = td("mono"); drv.textContent = i.driver; tr.appendChild(drv);
+    var drv = td("mono", "Driver"); drv.textContent = i.driver; tr.appendChild(drv);
 
-    var mode = td("mono");
+    var mode = td("mono", "Mode");
     mode.textContent = i.mode;
     if (i.mode === "monitor") { mode.style.color = "#2DD4BF"; mode.style.fontWeight = "700"; }
     tr.appendChild(mode);
 
-    var link = td("mono muted"); link.textContent = i.operstate || "—"; tr.appendChild(link);
+    var link = td("mono muted", "Link"); link.textContent = i.operstate || "—"; tr.appendChild(link);
 
-    var res = td();
+    var res = td(null, "Reservation");
     if (i.busy) {
       res.appendChild(pill("busy", "#1d2a1e", "#2DD4BF"));
       var m = document.createElement("span");

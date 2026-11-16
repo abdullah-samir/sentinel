@@ -52,6 +52,7 @@
 <div class="panel">
   <h2>Schedules ({{ schedules|length }})</h2>
   {% if schedules %}
+  <div class="table-wrap">
   <table>
     <thead><tr><th>Workflow</th><th>Target</th><th>When</th><th>Next run</th><th>Last result</th><th></th></tr></thead>
     <tbody>
@@ -74,6 +75,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <div class="empty">No schedules yet.</div>
   {% endif %}

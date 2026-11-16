@@ -7,7 +7,8 @@
   <div class="toolbar"><input id="search" placeholder="filter hosts…"
        oninput="var q=this.value.toLowerCase();document.querySelectorAll('#assets tr.hrow').forEach(function(t){t.style.display=t.textContent.toLowerCase().indexOf(q)!=-1?'':'none'})"
        style="min-width:200px"></div>
-  <table id="assets">
+  <div class="table-wrap">
+  <table id="assets" class="stacktable">
     <thead><tr>
       <th>IP</th><th>MAC / vendor</th><th>Hostname</th><th>Open ports</th>
       <th>Worst</th><th>Seen</th><th>Last seen</th>
@@ -15,18 +16,19 @@
     <tbody>
       {% for h in hosts %}
       <tr class="hrow">
-        <td class="mono"><a href="/assets/{{ h.key }}">{{ h.ip }}</a>
+        <td class="mono" data-label="IP"><a href="/assets/{{ h.key }}">{{ h.ip }}</a>
           {% if h.ips|length > 1 %}<div class="muted" style="font-size:11px">{{ h.ips|join(', ') }}</div>{% endif %}</td>
-        <td class="mono">{{ h.mac or "—" }}{% if h.vendor %}<div class="muted" style="font-size:11px">{{ h.vendor }}</div>{% endif %}</td>
-        <td class="mono">{{ h.hostname or "—" }}</td>
-        <td class="mono">{{ h.open_ports|join(', ') if h.open_ports else "—" }}</td>
-        <td><span class="sev" style="color:{{ sev_color[h.worst] }}">{{ h.worst }}</span></td>
-        <td>{{ h.times_seen }}</td>
-        <td class="mono">{{ h.last_seen }}</td>
+        <td class="mono" data-label="MAC / vendor">{{ h.mac or "—" }}{% if h.vendor %}<div class="muted" style="font-size:11px">{{ h.vendor }}</div>{% endif %}</td>
+        <td class="mono" data-label="Hostname">{{ h.hostname or "—" }}</td>
+        <td class="mono" data-label="Open ports">{{ h.open_ports|join(', ') if h.open_ports else "—" }}</td>
+        <td data-label="Worst"><span class="sev" style="color:{{ sev_color[h.worst] }}">{{ h.worst }}</span></td>
+        <td data-label="Seen">{{ h.times_seen }}</td>
+        <td class="mono" data-label="Last seen"><time datetime="{{ h.last_seen }}">{{ h.last_seen }}</time></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <div class="empty">No hosts discovered yet. Run a recon scan to populate this.</div>
   {% endif %}

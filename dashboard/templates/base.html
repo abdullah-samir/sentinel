@@ -14,7 +14,16 @@
 <div class="app">
 {% from "_icons.html" import icon %}
 {% block nav %}
-  <aside class="sidebar">
+  {% if user %}
+  <div class="mtopbar">
+    <button class="mtb-burger" type="button" id="navToggle" aria-label="Open menu"
+            aria-controls="sidebar" aria-expanded="false">{{ icon('menu') }}</button>
+    <div class="brand">Sentinel<span class="dot">.</span></div>
+    <div class="grow"></div>
+  </div>
+  <div class="nav-backdrop" id="navBackdrop"></div>
+  {% endif %}
+  <aside class="sidebar" id="sidebar">
     <div class="brand">Sentinel<span class="dot">.</span></div>
     {% if user %}
     <a class="nav {{ 'active' if nav_active == 'overview' }}" href="/">{{ icon('grid') }}<span>Overview</span></a>
@@ -47,6 +56,38 @@
     </footer>
   </main>
 </div>
+{% if user %}
+<script>
+(function () {
+  "use strict";
+  var btn = document.getElementById("navToggle");
+  var side = document.getElementById("sidebar");
+  var back = document.getElementById("navBackdrop");
+  if (!btn || !side) return;
+  var body = document.body;
+  function setOpen(open) {
+    body.classList.toggle("nav-open", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    if (open) {
+      var first = side.querySelector("a.nav, button, a");
+      if (first) { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }
+    } else {
+      try { btn.focus({ preventScroll: true }); } catch (e) {}
+    }
+  }
+  btn.addEventListener("click", function () { setOpen(!body.classList.contains("nav-open")); });
+  if (back) back.addEventListener("click", function () { setOpen(false); });
+  side.addEventListener("click", function (e) {
+    var a = e.target.closest("a.nav, a, button[type=submit]");
+    if (a) setOpen(false);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && body.classList.contains("nav-open")) setOpen(false);
+  });
+})();
+</script>
+{% endif %}
 {% if user and active %}
 <div id="live-indicator" role="status" style="position:fixed;right:14px;bottom:14px;z-index:60;
      background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--teal);

@@ -42,6 +42,7 @@
 
   <div class="panel">
     <h2>Sensor status</h2>
+    <div class="table-wrap">
     <table>
       <tr><th>Transport</th><td class="mono">{{ st.transport or '—' }}</td>
           <th>Source</th><td class="mono">{{ esp.source or '—' }}</td></tr>
@@ -52,6 +53,7 @@
       <tr><th>Last run</th><td class="mono">{{ esp.finished_at or esp.started_at or '—' }}</td>
           <th>Run</th><td class="mono"><a href="/run/{{ esp.run_id }}">{{ esp.run_id }}</a></td></tr>
     </table>
+    </div>
     {% if can_run %}
     <form method="post" action="/run/esp_monitor" style="margin-top:12px">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
@@ -69,6 +71,7 @@
         reader may be attached. Detections below may be stale.</div>
     {% endif %}
     {% if esp.detections %}
+      <div class="table-wrap">
       <table>
         <thead><tr><th>Severity</th><th>Type</th><th>Offender</th>
                    <th>Evidence</th><th>Ingested</th></tr></thead>
@@ -85,6 +88,7 @@
         {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
       <div class="empty">No attack detections in the last run — the sensor was
         {{ 'alive and quiet' if esp.alive else 'not heard from' }}.</div>
