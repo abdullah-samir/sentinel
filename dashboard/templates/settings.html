@@ -9,11 +9,14 @@
   'provsaved':'Provisioning settings saved.',
   'provwarn':'Provisioning settings saved (with a warning — see the interface note).',
   'provinvalid':'Provisioning settings invalid — not saved. Check the password (8–63 chars), interface and subnet.',
+  'mgmtsaved':'Management hotspot settings saved.',
+  'mgmtwarn':'Management hotspot settings saved (with a warning — see the interface note).',
+  'mgmtinvalid':'Management hotspot settings invalid — not saved. Check the password (8–63 chars), a dedicated non-wlan0 interface, and the subnet.',
   'termpwchanged':'Terminal password set.','badtermcurrent':'Current terminal password is incorrect.',
   'termtooshort':'Terminal password must be at least 8 characters.','termmismatch':'Terminal passwords do not match.',
   'readonly':'Read-only mode — change not saved.'} %}
 {% if msg and notes.get(msg) %}
-<div class="banner {{ 'err' if msg in ('badcurrent','tooshort','mismatch','invalid','provinvalid','readonly','badtermcurrent','termtooshort','termmismatch') else ('warn' if msg == 'provwarn' else '') }}">{{ notes[msg] }}</div>
+<div class="banner {{ 'err' if msg in ('badcurrent','tooshort','mismatch','invalid','provinvalid','mgmtinvalid','readonly','badtermcurrent','termtooshort','termmismatch') else ('warn' if msg in ('provwarn','mgmtwarn') else '') }}">{{ notes[msg] }}</div>
 {% endif %}
 
 <div class="panel">
@@ -158,6 +161,85 @@
 
     {% if readonly %}<p class="muted" style="font-size:12px">Read-only mode — provisioning settings are locked.</p>{% endif %}
     <button class="btn primary" type="submit" style="align-self:flex-start" {{ 'disabled' if poff }}>Save provisioning</button>
+  </form>
+</div>
+
+<div class="panel" id="mgmt-ap">
+  <h2>Management hotspot <span class="pill" style="{{ 'color:#34D399;border-color:#1f5a4a' if mgmt.mgmt_ap_enabled else '' }}">{{ 'ON' if mgmt.mgmt_ap_enabled else 'OFF' }}</span></h2>
+  <p class="muted" style="font-size:12px;max-width:640px">
+    An always-on Wi-Fi network — on a <b>dedicated USB adapter</b> — so you can reach this
+    dashboard from your phone <b>at any time, even when the Pi is offline</b>. Unlike
+    provisioning above, it is a normal management network (no captive portal, no DNS
+    hijack) and it stays up regardless of internet. <b>Ships disabled.</b> It <b>never</b>
+    runs on <span class="mono">wlan0</span> or the interface carrying your uplink/SSH — if
+    the chosen adapter is missing, busy, or unsafe, the hotspot simply does not come up
+    (there is no fallback). Nothing here changes the Pi until you turn it on.
+  </p>
+  {% set moff = readonly %}
+  {% set mgmt_selectable = mgmt_ifaces | selectattr('selectable') | list %}
+  <form method="post" action="/settings/mgmt_ap#mgmt-ap"
+        style="display:flex;flex-direction:column;gap:12px;max-width:520px">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+
+    <label style="font-weight:600">
+      <input type="checkbox" name="mgmt_ap_enabled" value="1"
+             {{ 'checked' if mgmt.mgmt_ap_enabled }}
+             {{ 'disabled' if moff or not mgmt.mgmt_ap_password_set or not mgmt.mgmt_ap_ifname }}>
+      Enable management hotspot (master switch)
+      {% if not mgmt.mgmt_ap_password_set %}<span class="muted">(set a password first)</span>
+      {% elif not mgmt.mgmt_ap_ifname %}<span class="muted">(choose a dedicated interface first)</span>{% endif %}
+    </label>
+
+    <label>Dedicated interface
+      <select name="mgmt_ap_ifname" {{ 'disabled' if moff }}>
+        <option value="">— choose a dedicated USB adapter —</option>
+        {% for i in mgmt_ifaces %}
+          <option value="{{ i.iface }}" {{ 'selected' if i.selected }} {{ 'disabled' if not i.selectable }}>
+            {{ i.iface }}{% if i.mac %} · {{ i.mac }}{% endif %}{% if i.usb_path %} · usb {{ i.usb_path }}{% endif %}{% if i.note %} — {{ i.note }}{% endif %}</option>
+        {% endfor %}
+        {% if mgmt.mgmt_ap_ifname and mgmt.mgmt_ap_ifname not in (mgmt_ifaces | map(attribute='iface') | list) %}
+          <option value="{{ mgmt.mgmt_ap_ifname }}" selected>{{ mgmt.mgmt_ap_ifname }} (not detected now)</option>
+        {% endif %}
+      </select>
+      <span class="muted" style="font-size:12px">Two identical dongles are told apart by MAC + USB port. <span class="mono">wlan0</span> and the uplink/SSH interface are never selectable.</span></label>
+    {% if not mgmt_selectable %}
+      <p class="muted" style="font-size:12px">No dedicated USB Wi-Fi adapter is available right now. Plug one in (keeping <span class="mono">wlan0</span> as the uplink) and reload.</p>
+    {% endif %}
+
+    <label>Hotspot name (SSID)
+      <input type="text" name="mgmt_ap_ssid" value="{{ mgmt.mgmt_ap_ssid }}" maxlength="32" {{ 'disabled' if moff }}></label>
+
+    <label>Hotspot password (WPA2, 8–63 chars)
+      <input type="password" name="mgmt_ap_password" autocomplete="new-password" maxlength="63"
+             placeholder="{{ '•••••••• (set — leave blank to keep)' if mgmt.mgmt_ap_password_set else 'required before enabling' }}"
+             {{ 'disabled' if moff }}>
+      <span class="muted" style="font-size:12px">Stored owner-only on the Pi; never shown back in full. Leave blank to keep the current one.</span></label>
+
+    <label><input type="checkbox" name="mgmt_ap_hidden" value="1" {{ 'checked' if mgmt.mgmt_ap_hidden }} {{ 'disabled' if moff }}>
+      Hidden SSID</label>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <label>Hotspot IP
+        <input type="text" name="mgmt_ap_ip" value="{{ mgmt.mgmt_ap_ip }}" maxlength="15"
+               pattern="[0-9.]*" style="width:140px" {{ 'disabled' if moff }}></label>
+      <label>Subnet /prefix
+        <input type="number" name="mgmt_ap_prefix" value="{{ mgmt.mgmt_ap_prefix }}" min="8" max="30"
+               style="width:90px" {{ 'disabled' if moff }}></label>
+    </div>
+    <p class="muted" style="font-size:12px">Reach the dashboard at <span class="mono">http://{{ mgmt.mgmt_ap_ip }}:8000</span>{% if mgmt.mgmt_ap_hostname %} or <span class="mono">http://{{ mgmt.mgmt_ap_hostname }}:8000</span>{% endif %} once connected. Must not clash with the provisioning subnet.</p>
+
+    <label>Friendly hostname
+      <input type="text" name="mgmt_ap_hostname" value="{{ mgmt.mgmt_ap_hostname }}" maxlength="64"
+             pattern="[A-Za-z0-9.-]*" style="width:200px" {{ 'disabled' if moff }}></label>
+
+    <label><input type="checkbox" name="share_internet" value="1" {{ 'checked' if mgmt.share_internet }} {{ 'disabled' if moff }}>
+      Share internet to hotspot clients
+      <span class="muted" style="font-size:12px">Off by default (management only — your phone keeps its own data and just reaches the Pi). Tick to NAT hotspot clients out through the Pi's current uplink.</span></label>
+
+    <p class="muted" style="font-size:12px">To reach the dashboard over this hotspot, also tick <b>“Expose the dashboard on the hotspot”</b> in the provisioning section above (it broadens the dashboard bind beyond localhost).</p>
+
+    {% if readonly %}<p class="muted" style="font-size:12px">Read-only mode — management hotspot settings are locked.</p>{% endif %}
+    <button class="btn primary" type="submit" style="align-self:flex-start" {{ 'disabled' if moff }}>Save management hotspot</button>
   </form>
 </div>
 

@@ -258,3 +258,36 @@ fails *closed*: if the check itself errors, the AP is refused, not permitted.)
 
 **The real end-to-end test is supervised** (Ethernet/monitor attached): it is NOT in
 the test suite, and the build never ran nmcli or raised an AP on the live Pi.
+
+## Always-on management hotspot (Phase P2) — SHIPS DISABLED
+
+A second, independent Wi-Fi feature: a persistent WPA2 hotspot on a **dedicated USB
+adapter** so you can reach the dashboard from a phone **at any time, even when the Pi
+is offline**. It is NOT the provisioning AP above — there is no captive portal and no
+DNS hijack (just one friendly-hostname entry), and it stays up regardless of internet.
+Configure it in **Settings → Management hotspot**. All settings persist to
+`data/state/mgmt_ap.json` (written `0600` — it holds the PSK); the PSK is never echoed
+back or logged.
+
+**Zero-risk contract (enforced by `core/mgmt_ap_service.py`):** the master switch
+`mgmt_ap_enabled` ships **off**; while off the root supervisor is a strict no-op and
+holds **no** interface reservation. When on, the AP rises **only** on the configured
+NIC — which must **not** be `wlan0` and **not** the live default-route/SSH interface
+(same `self_link_reason` guard as P1, fail-closed) — and the NIC is reserved in
+`mode="ap"` for the AP's lifetime. If the NIC is missing, busy, or unsafe, the AP
+simply does not come up: **there is no fallback** to another adapter. Its pinned subnet
+(default `10.42.1.0/24`) is validated not to clash with P1's AP subnet, so both
+hotspots can run at once on two radios. `share_internet` is **off** by default
+(management-only); turn it on to NAT clients out through the current uplink.
+
+**Install the unit (inert until the setting is on):**
+```
+sudo cp deploy/systemd/sentinel-mgmt-ap.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now sentinel-mgmt-ap.service
+```
+It is a **separate** root unit from `sentinel-provisioning.service` (distinct NM profile
+`sentinel-mgmt-ap`), so the two coexist. To reach the dashboard over this hotspot, also
+tick **Expose the dashboard on the hotspot** in the provisioning section (it broadens
+the dashboard bind beyond localhost). As with P1, the real AP is raised only in a
+supervised live test — the build never ran nmcli or raised an AP on the Pi.

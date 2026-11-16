@@ -70,6 +70,38 @@ def operstate(iface: str) -> str:
         return ""
 
 
+def iface_mac(iface: str) -> str:
+    """The interface's MAC address, or "" on failure. Lets the UI tell two identical
+    USB dongles apart when choosing the dedicated management-AP NIC."""
+    try:
+        return (_sys_net() / iface / "address").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def usb_path(iface: str) -> str:
+    """The USB bus path for a USB-attached NIC (e.g. '1-1.3'), or "" otherwise. A
+    stable, human-readable way to distinguish two identical dongles by the port they
+    are plugged into."""
+    dev = _sys_net() / iface / "device"
+    for _ in range(6):
+        try:
+            if (dev / "idVendor").exists():
+                name = dev.resolve().name
+                # the usb *interface* dir looks like '1-1.3:1.0'; trim the ':x.y'
+                return name.split(":")[0]
+        except OSError:
+            pass
+        try:
+            nxt = dev.resolve().parent
+        except OSError:
+            break
+        if nxt == dev:
+            break
+        dev = nxt
+    return ""
+
+
 def iw_mode(iface: str) -> str:
     """Current 802.11 mode via `iw dev <iface> info` (e.g. managed/monitor).
     Only called for a FREE Wi-Fi interface (never one mid-capture). "" on any
@@ -189,6 +221,58 @@ def monitor_interface_choices(config, registry, default: str = "") -> List[dict]
             "iface": iface, "busy": busy, "holder": holder, "unsafe": unsafe,
             "capable": capable, "selectable": selectable, "note": note,
             "is_default": iface == default,
+        })
+    return out
+
+
+def mgmt_ap_interface_choices(config, registry, selected: str = "",
+                              iface_info: Optional[dict] = None) -> List[dict]:
+    """Candidate NICs for the DEDICATED management-AP interface picker (Phase P2).
+
+    Lists Wi-Fi interfaces with the facts needed to pick safely: MAC + USB path (to
+    tell two identical dongles apart), whether the NIC is USB-attached, AP-capable
+    (from ``iface_info`` when supplied — live nmcli discovery — else unknown), busy
+    (reserved by an alive run), and whether it is a protected interface. ``wlan0`` and
+    the default-route/SSH interface are listed but NON-selectable: the management AP
+    must never run on the onboard adapter or the uplink. Pure read."""
+    reservations = registry.reservations()
+    default_if = core_state.default_route_iface() or ""
+    ssh_if = core_state.ssh_iface()
+    info = iface_info or {}
+
+    out = []
+    for iface in present_interfaces():
+        if iface == "lo" or not is_wifi(iface):
+            continue
+        res = reservations.get(iface)
+        busy = bool(res and res.get("alive"))
+        usb = is_usb(iface)
+        unsafe = (iface == default_if) or (bool(ssh_if) and iface == ssh_if)
+        is_onboard = iface == "wlan0"
+        # AP-capability: honour live discovery when present; unknown (None) otherwise.
+        cap = info.get(iface, {}).get("ap_capable") if iface in info else None
+        ap_capable = (cap is not False)        # unknown is treated as "maybe"
+        holder = ""
+        if busy:
+            holder = res.get("label") or ("run " + str(res.get("run_id", "")))
+        selectable = usb and ap_capable and not busy and not unsafe and not is_onboard
+        if is_onboard:
+            note = "onboard adapter — never the management AP"
+        elif unsafe:
+            note = "default-route / SSH — protected"
+        elif busy:
+            note = "busy — in use by " + holder
+        elif not usb:
+            note = "built-in — use a dedicated USB adapter"
+        elif cap is False:
+            note = "not AP-capable"
+        else:
+            note = ""
+        out.append({
+            "iface": iface, "mac": iface_mac(iface), "usb_path": usb_path(iface),
+            "usb": usb, "busy": busy, "holder": holder, "unsafe": unsafe,
+            "onboard": is_onboard, "ap_capable": ap_capable, "selectable": selectable,
+            "selected": iface == selected, "note": note,
         })
     return out
 

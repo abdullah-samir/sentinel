@@ -57,6 +57,14 @@ class NetworkBackend(ABC):
     def ap_down(self) -> bool:
         """Deactivate the dedicated AP profile. Disturbs nothing else."""
 
+    def ap_is_up(self, con_name: str = "") -> bool:
+        """Best-effort: is the dedicated AP profile currently ACTIVE? Used by a
+        long-running supervisor to notice an AP that dropped and re-raise it.
+        Concrete (not abstract) with a safe default of True so a backend that
+        cannot cheaply check never triggers a needless re-raise; the mgmt-AP and
+        mock backends override it. P1's monitor never calls this."""
+        return True
+
     @abstractmethod
     def profile_exists(self, name: str) -> bool:
         """True iff an NM connection profile with this name already exists."""
@@ -141,6 +149,10 @@ class MockBackend(NetworkBackend):
         if self.ap_down_ok:
             self.ap_active = False
         return self.ap_down_ok
+
+    def ap_is_up(self, con_name: str = "") -> bool:
+        self._log("ap_is_up", con_name)
+        return self.ap_active
 
     def profile_exists(self, name: str) -> bool:
         self._log("profile_exists", name)

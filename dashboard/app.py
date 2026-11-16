@@ -39,7 +39,8 @@ from core.events import EventBus
 from core.hardware import build_hardware
 from core.schema import RunResult, make_run_id, utcnow_iso
 from core.state import (get_interface_registry, interface_safety_check,
-                        esp_bridge_effective_enabled, set_esp_bridge_override)
+                        esp_bridge_effective_enabled, set_esp_bridge_override,
+                        default_route_iface)
 from core.store import Store
 from core.workflows import load_workflows
 from dashboard.auth import (
@@ -61,6 +62,7 @@ from dashboard import terminal as terminal_mod
 from dashboard import provisioning_discovery as prov_disc
 from dashboard import launcher, manage, settings as settings_mod
 from core import provisioning as prov_mod
+from core import mgmt_ap as mgmt_mod
 from reporting import history, risk, report_engine
 
 _EVENT_TOPICS = ("run.start", "step.start", "step.done", "step.skip",
@@ -1129,6 +1131,12 @@ def create_app(core_config: Optional[Config] = None,
                       discovery=settings_mod.discovery_prefs(core_config),
                       prov=prov_mod.redacted(prov_mod.load_provisioning(core_config)),
                       prov_ifaces=prov_disc.ap_capable_interfaces(core_config),
+                      mgmt=mgmt_mod.redacted(mgmt_mod.load_mgmt_ap(core_config)),
+                      mgmt_ifaces=interfaces_mod.mgmt_ap_interface_choices(
+                          core_config, iface_registry,
+                          selected=mgmt_mod.load_mgmt_ap(core_config).get(
+                              "mgmt_ap_ifname", ""),
+                          iface_info=prov_disc.ap_capable_interfaces(core_config)),
                       shell_enabled=dash_config.shell_enabled,
                       terminal_password_set=dash_config.terminal_password_set,
                       msg=request.query_params.get("msg"))
@@ -1251,6 +1259,59 @@ def create_app(core_config: Optional[Config] = None,
                  current_user(request), updates["provisioning_enabled"])
         tag = "provwarn" if warnings else "provsaved"
         return RedirectResponse(f"/settings?msg={tag}#provisioning", status_code=303)
+
+    @app.post("/settings/mgmt_ap")
+    async def settings_mgmt_ap(request: Request):
+        # Always-on management hotspot settings (Phase P2). SHIPS DISABLED: this only
+        # persists config; the root supervisor is a strict no-op (and reserves nothing)
+        # until mgmt_ap_enabled is turned on. Auth + CSRF + readonly-gated. The AP can
+        # never run on wlan0 or the uplink (validated here AND re-checked live).
+        if not current_user(request):
+            return login_redirect()
+        if dash_config.readonly:
+            return RedirectResponse("/settings?msg=readonly#mgmt-ap", status_code=303)
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return HTMLResponse("CSRF validation failed.", status_code=403)
+
+        def checkbox(name: str) -> bool:
+            return form.get(name) in ("1", "on", "true")
+
+        updates = {
+            "mgmt_ap_enabled": checkbox("mgmt_ap_enabled"),
+            "mgmt_ap_hidden": checkbox("mgmt_ap_hidden"),
+            "share_internet": checkbox("share_internet"),
+        }
+        for key in ("mgmt_ap_ifname", "mgmt_ap_ssid", "mgmt_ap_ip", "mgmt_ap_prefix",
+                    "mgmt_ap_hostname"):
+            if form.get(key) not in (None, ""):
+                updates[key] = form[key]
+        # The masked PSK field: a blank value keeps the stored secret (never resent).
+        pw = form.get("mgmt_ap_password", "")
+        updates["mgmt_ap_password"] = pw if pw else mgmt_mod.KEEP_SECRET
+
+        # Live facts for validation: AP-capability + reservations, existing shared
+        # subnets PLUS P1's AP subnet (so the two hotspots never collide), and the
+        # current uplink interface (never let the AP hijack it).
+        iface_info, shared = prov_disc.settings_discovery(core_config)
+        p1_subnet = mgmt_mod.mgmt_ap_subnet({
+            "mgmt_ap_ip": prov_mod.load_provisioning(core_config).get("ap_ip", ""),
+            "mgmt_ap_prefix": prov_mod.load_provisioning(core_config).get("ap_prefix", 24),
+        })
+        if p1_subnet:
+            shared = list(shared) + [p1_subnet]
+        uplink = default_route_iface() or ""
+        ok, errors, warnings, _ = mgmt_mod.save_mgmt_ap(
+            core_config, updates, iface_info=(iface_info or None),
+            shared_subnets=shared, uplink_iface=uplink)
+        if not ok:
+            log.info("mgmt-ap settings rejected: %s", errors)
+            return RedirectResponse("/settings?msg=mgmtinvalid#mgmt-ap",
+                                    status_code=303)
+        log.info("mgmt-ap settings saved user=%s enabled=%s",
+                 current_user(request), updates["mgmt_ap_enabled"])
+        tag = "mgmtwarn" if warnings else "mgmtsaved"
+        return RedirectResponse(f"/settings?msg={tag}#mgmt-ap", status_code=303)
 
     # --- JSON APIs (auth-required) ---------------------------------------
     @app.get("/api/runs")

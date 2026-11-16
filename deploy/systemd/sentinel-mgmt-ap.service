@@ -1,0 +1,28 @@
+[Unit]
+# Sentinel always-on MANAGEMENT hotspot — ROOT supervisor (Phase P2).
+# SHIPS DISABLED BY DEFAULT: the loop is a STRICT NO-OP (and holds NO interface
+# reservation) until mgmt_ap_enabled is turned on in the dashboard
+# (Settings → Management hotspot). Installing/enabling this unit alone changes
+# NOTHING on the Pi — it only observes the setting. It is INDEPENDENT of the
+# provisioning service (separate con-name "sentinel-mgmt-ap", separate subnet) and
+# the two can run at once on two radios.
+Description=Sentinel management hotspot supervisor (root; dedicated USB NIC AP)
+Documentation=file:/home/sentinel/sentinel/deploy/README.md
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+# Root is required to run nmcli changes and write the NetworkManager dnsmasq entry.
+User=root
+WorkingDirectory=/home/sentinel/sentinel
+Environment=SENTINEL_ROOT=/home/sentinel/sentinel
+ExecStart=/home/sentinel/sentinel/venv/bin/python -m core.mgmt_ap_service
+Restart=on-failure
+RestartSec=5
+# FAIL-SAFE: on any stop/exit, remove the single-host DNS snippet. The supervisor's
+# own cleanup tears the AP down and frees the dedicated interface's reservation.
+ExecStopPost=-/bin/rm -f /etc/NetworkManager/dnsmasq-shared.d/sentinel-mgmt.conf
+
+[Install]
+WantedBy=multi-user.target

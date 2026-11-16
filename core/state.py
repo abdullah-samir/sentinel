@@ -39,7 +39,11 @@ from core.schema import utcnow_iso
 
 log = logging.getLogger("sentinel.state")
 
-VALID_MODES = ("managed", "monitor")
+# Reservation modes recorded in the registry. "ap" is representation-only here —
+# the management-AP supervisor claims an interface in "ap" mode so the UI can
+# attribute it correctly — and is NEVER a user-selectable mode in POST
+# /interfaces/mode (that route accepts only "managed"/"monitor").
+VALID_MODES = ("managed", "monitor", "ap")
 
 
 # --------------------------------------------------------------------------- #
