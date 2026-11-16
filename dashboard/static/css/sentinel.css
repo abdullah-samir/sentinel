@@ -211,7 +211,7 @@ details>summary:hover{color:var(--cyan)}
     display:flex;align-items:center;gap:2px}
   .mtopbar .brand .dot{color:var(--cyan);text-shadow:0 0 12px var(--glow)}
   .mtopbar .grow{flex:1}
-  .mtb-burger{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;
+  .mtb-burger{position:relative;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;
     margin-left:-8px;border:0;background:transparent;color:var(--ink);border-radius:var(--r-sm);cursor:pointer;
     -webkit-tap-highlight-color:transparent;transition:background var(--dur) var(--ease)}
   .mtb-burger .ic{width:24px;height:24px;vertical-align:0}
@@ -455,4 +455,61 @@ tbody tr:active{background:rgba(34,211,238,.06)}
 @media (prefers-reduced-motion:reduce){
   .sidebar{transition:none!important}
   .nav-backdrop{transition:none!important}
+}
+
+/* =============================================================== PHASE 3
+   Readability & ergonomics: progress bar, relative time, tap-to-copy,
+   skeletons, nav findings badge.
+   ========================================================================= */
+
+/* top navigation progress bar (indeterminate; completes on fresh render) */
+#nprogress{position:fixed;top:0;left:0;right:0;height:2px;z-index:200;pointer-events:none;
+  background:transparent;opacity:0;transition:opacity var(--dur) var(--ease)}
+#nprogress.on{opacity:1}
+#nprogress .np-bar{height:100%;width:40%;border-radius:0 2px 2px 0;
+  background:linear-gradient(90deg,transparent,var(--cyan),var(--cyan-2));
+  box-shadow:0 0 12px var(--glow);transform:translateX(-100%);
+  animation:npSlide 1.1s var(--ease) infinite}
+@keyframes npSlide{0%{transform:translateX(-100%)}50%{transform:translateX(60%)}100%{transform:translateX(260%)}}
+
+/* relative timestamps */
+time[datetime].rel{border-bottom:1px dotted transparent}
+time[datetime].rel.tap{cursor:pointer}
+time[datetime].rel.tap:hover{border-bottom-color:var(--border-strong)}
+
+/* tap-to-copy mono values */
+.copyable{cursor:pointer;position:relative;transition:color var(--dur) var(--ease)}
+.copyable:hover{color:var(--cyan-2)}
+.copyable::after{content:"";position:absolute;inset:-2px -5px;border-radius:5px;
+  border:1px dashed transparent;transition:border-color var(--dur) var(--ease);pointer-events:none}
+.copyable:hover::after{border-color:var(--border-strong)}
+.copyable.copied{color:var(--cyan)}
+.copy-flash{position:fixed;z-index:210;transform:translate(-50%,-140%);pointer-events:none;
+  background:var(--surface-4);color:var(--ink);border:1px solid var(--cyan);border-radius:var(--r-pill);
+  padding:3px 10px;font-size:11px;font-weight:600;box-shadow:var(--shadow-2),0 0 16px -6px var(--glow);
+  opacity:0;animation:copyPop 1s var(--ease) forwards}
+@keyframes copyPop{0%{opacity:0;transform:translate(-50%,-110%)}20%{opacity:1;transform:translate(-50%,-150%)}
+  80%{opacity:1}100%{opacity:0;transform:translate(-50%,-170%)}}
+
+/* skeleton shimmer for async panels (live run / ESP stream) */
+.skeleton,.sk{position:relative;overflow:hidden;border-radius:7px;
+  background:linear-gradient(90deg,var(--surface-2) 0%,var(--surface-3) 50%,var(--surface-2) 100%);
+  background-size:200% 100%;animation:shimmer 1.3s linear infinite}
+.sk-line{height:12px;margin:8px 0;opacity:.7}
+.sk-line.w40{width:40%}.sk-line.w60{width:60%}.sk-line.w80{width:80%}.sk-line.w90{width:90%}
+
+/* nav findings badge (open high+critical) */
+.nav-badge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:var(--r-pill);
+  display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+  font-family:var(--font-mono);color:#120407;background:var(--sev-high);
+  box-shadow:0 0 12px -4px var(--sev-high)}
+.sidebar a.nav .nav-badge{margin-left:auto}
+.mtb-badge{position:absolute;top:4px;right:4px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;
+  display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;
+  font-family:var(--font-mono);color:#120407;background:var(--sev-high);box-shadow:0 0 10px -3px var(--sev-high)}
+
+@media (prefers-reduced-motion:reduce){
+  #nprogress .np-bar{animation:none;width:100%;transform:none}
+  .skeleton,.sk{animation:none}
+  .copy-flash{animation-duration:.001ms}
 }

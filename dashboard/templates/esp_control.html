@@ -117,7 +117,10 @@
       <label class="esp-pretty-toggle" title="Log every frame incl. repeated telemetry (debug)"><input id="esp-verbose-chk" type="checkbox"> verbose</label>
     </div>
   </div>
-  <div id="esp-log" class="esp-log mono" aria-live="polite"></div>
+  <div id="esp-log" class="esp-log mono" aria-live="polite"><div class="sk-skel" aria-hidden="true">
+    <div class="sk sk-line w60"></div><div class="sk sk-line w90"></div>
+    <div class="sk sk-line w40"></div><div class="sk sk-line w80"></div>
+  </div></div>
 </div>
 
 <!-- COMMAND CONSOLE ---------------------------------------------------- -->
@@ -440,6 +443,7 @@
     var frag=document.createDocumentFragment();
     pendingRows.forEach(function(el){ frag.appendChild(el); });
     pendingRows=[];
+    var sk=logEl.querySelector(".sk-skel"); if(sk) sk.remove();   // clear skeleton on first frame
     logEl.appendChild(frag);
     while(logEl.childNodes.length>MAXLOG) logEl.removeChild(logEl.firstChild);
     if(autoscroll) scrollLogBottom(); else showJump();

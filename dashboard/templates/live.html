@@ -46,7 +46,10 @@
 
 <div class="panel">
   <h2>Live console</h2>
-  <div id="console"></div>
+  <div id="console"><div class="sk-skel" aria-hidden="true">
+    <div class="sk sk-line w80"></div><div class="sk sk-line w60"></div>
+    <div class="sk sk-line w90"></div><div class="sk sk-line w40"></div>
+  </div></div>
   <p id="nojs" class="muted" style="display:none;margin-top:10px">
     Live updates need JavaScript. <a href="/">Open the overview</a> (auto-refreshes).</p>
   <noscript>
@@ -85,6 +88,7 @@
     var seq = (e.seq!=null) ? e.seq : e._seq;
     if(seq!=null){ if(seen[seq]) return; seen[seq]=1; }
     var box=document.getElementById('console');
+    var sk=box.querySelector('.sk-skel'); if(sk) sk.remove();   // clear skeleton on first line
     var d=document.createElement('div'); d.className='cline'; d.textContent=lineText(e);
     box.appendChild(d); box.scrollTop=box.scrollHeight;
   }

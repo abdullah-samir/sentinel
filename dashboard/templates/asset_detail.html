@@ -2,10 +2,10 @@
 {% block title %}Host {{ host.ip }}{% endblock %}
 {% block content %}
 <p style="margin:0 0 10px"><a href="/assets">&larr; Assets</a></p>
-<h1 class="mono">{{ host.ip }}</h1>
+<h1 class="mono copyable" style="display:inline-block">{{ host.ip }}</h1>
 <div class="panel">
   <div class="cards">
-    <div class="card"><div class="n mono" style="font-size:16px">{{ host.mac or "—" }}</div><div class="l">MAC</div></div>
+    <div class="card"><div class="n mono{{ ' copyable' if host.mac }}" style="font-size:16px">{{ host.mac or "—" }}</div><div class="l">MAC</div></div>
     <div class="card"><div class="n" style="font-size:16px">{{ host.vendor or "—" }}</div><div class="l">Vendor</div></div>
     <div class="card"><div class="n mono" style="font-size:16px">{{ host.hostname or "—" }}</div><div class="l">Hostname</div></div>
     <div class="card"><div class="n"><span class="sev" style="color:{{ sev_color[host.worst] }}">{{ host.worst }}</span></div><div class="l">Worst severity</div></div>

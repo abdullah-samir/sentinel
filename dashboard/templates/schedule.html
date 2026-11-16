@@ -61,7 +61,7 @@
         <td>{{ s.workflow }}</td>
         <td class="mono">{{ s.target or "(auto)" }}</td>
         <td>{% if s.kind == 'daily' %}daily at {{ s.at }}{% else %}every {{ s.every_hours }}h{% endif %}</td>
-        <td class="mono">{{ s.next_run_iso }}</td>
+        <td class="mono"><time datetime="{{ s.next_run_iso.replace(' ', 'T') }}">{{ s.next_run_iso }}</time></td>
         <td>{% if s.last_run_id %}<a href="/run/{{ s.last_run_id }}">view</a>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
           {% if not readonly %}

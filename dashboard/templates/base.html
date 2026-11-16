@@ -24,16 +24,17 @@
   {% if user %}
   <div class="mtopbar">
     <button class="mtb-burger" type="button" id="navToggle" aria-label="Open menu"
-            aria-controls="sidebar" aria-expanded="false">{{ icon('menu') }}</button>
+            aria-controls="sidebar" aria-expanded="false">{{ icon('menu') }}{% if nav_alerts %}<span class="mtb-badge" aria-hidden="true">{{ nav_alerts }}</span>{% endif %}</button>
     <div class="brand">Sentinel<span class="dot">.</span></div>
     <div class="grow"></div>
+    {% if nav_alerts %}<span class="muted" style="font-size:12px">{{ nav_alerts }} high+</span>{% endif %}
   </div>
   <div class="nav-backdrop" id="navBackdrop"></div>
   {% endif %}
   <aside class="sidebar" id="sidebar">
     <div class="brand">Sentinel<span class="dot">.</span></div>
     {% if user %}
-    <a class="nav {{ 'active' if nav_active == 'overview' }}" href="/">{{ icon('grid') }}<span>Overview</span></a>
+    <a class="nav {{ 'active' if nav_active == 'overview' }}" href="/">{{ icon('grid') }}<span>Overview</span>{% if nav_alerts %}<span class="nav-badge" title="{{ nav_alerts }} open high/critical findings">{{ nav_alerts }}</span>{% endif %}</a>
     <a class="nav {{ 'active' if nav_active == 'scan' }}" href="/scan">{{ icon('scan') }}<span>Scan</span></a>
     <a class="nav {{ 'active' if nav_active == 'schedule' }}" href="/schedule">{{ icon('calendar') }}<span>Schedule</span></a>
     <a class="nav {{ 'active' if nav_active == 'runs' }}" href="/runs">{{ icon('list') }}<span>Runs</span></a>
@@ -63,6 +64,143 @@
     </footer>
   </main>
 </div>
+<script>
+/* Sentinel UI helpers — relative time, tap-to-copy, nav progress bar.
+   Offline, vanilla, no deps. Each piece degrades to no-op on failure. */
+(function () {
+  "use strict";
+  var reduce = false;
+  try { reduce = window.matchMedia("(prefers-reduced-motion:reduce)").matches; } catch (e) {}
+
+  /* ---- navigation progress bar (same-origin, same-tab) ---- */
+  (function () {
+    var np = null, timer = null;
+    function ensure() {
+      if (np) return np;
+      np = document.createElement("div"); np.id = "nprogress";
+      var b = document.createElement("div"); b.className = "np-bar";
+      np.appendChild(b); document.body.appendChild(np); return np;
+    }
+    function start() {
+      ensure(); clearTimeout(timer);
+      timer = setTimeout(function () { np.classList.add("on"); }, 60);
+    }
+    function stop() { if (np) np.classList.remove("on"); clearTimeout(timer); }
+    document.addEventListener("click", function (e) {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var a = e.target.closest ? e.target.closest("a[href]") : null;
+      if (!a) return;
+      if (a.target && a.target !== "_self") return;         // _blank (Health) etc.
+      if (a.hasAttribute("download")) return;
+      var href = a.getAttribute("href") || "";
+      if (href.charAt(0) === "#" || href.indexOf("javascript:") === 0) return;
+      var url; try { url = new URL(a.href, location.href); } catch (_) { return; }
+      if (url.origin !== location.origin) return;           // external
+      if (url.pathname === location.pathname && url.hash) return;  // same-page anchor
+      start();
+    }, true);
+    document.addEventListener("submit", function (e) {
+      var f = e.target; if (!f || f.tagName !== "FORM") return;
+      if (f.target && f.target !== "_self") return;
+      start();
+    }, true);
+    window.addEventListener("pageshow", stop);              // bfcache restore
+    window.addEventListener("beforeunload", function () { clearTimeout(timer); });
+  })();
+
+  /* ---- relative timestamps ---- */
+  function relText(ms) {
+    var diff = (Date.now() - ms) / 1000, fut = diff < 0, s = Math.abs(diff), out;
+    if (s < 45) return "just now";
+    else if (s < 90) out = "1 min";
+    else if (s < 3600) out = Math.round(s / 60) + " min";
+    else if (s < 5400) out = "1 hr";
+    else if (s < 86400) out = Math.round(s / 3600) + " hr";
+    else if (s < 172800) out = "1 day";
+    else if (s < 2592000) out = Math.round(s / 86400) + " days";
+    else if (s < 31536000) out = Math.round(s / 2592000) + " mo";
+    else out = Math.round(s / 31536000) + " yr";
+    return fut ? ("in " + out) : (out + " ago");
+  }
+  function initTimes() {
+    var els = document.querySelectorAll("time[datetime]:not([data-rel])");
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i], iso = el.getAttribute("datetime") || "";
+      var ms = Date.parse(iso);
+      var raw = (el.textContent || "").trim();
+      if (isNaN(ms) || !iso || raw === "" || raw === "—") { el.setAttribute("data-rel", "skip"); continue; }
+      var abs; try { abs = new Date(ms).toLocaleString(); } catch (_) { abs = raw; }
+      el.setAttribute("data-rel", "on");
+      el.setAttribute("data-abs", abs);
+      el.setAttribute("title", abs);
+      el.classList.add("rel");
+      el.textContent = relText(ms);
+      if (!el.closest("a")) {           // don't hijack taps inside links
+        el.classList.add("tap");
+        el.addEventListener("click", function (ev) {
+          var t = ev.currentTarget, showing = t.getAttribute("data-show") === "abs";
+          if (showing) { t.textContent = relText(Date.parse(t.getAttribute("datetime"))); t.setAttribute("data-show", "rel"); }
+          else { t.textContent = t.getAttribute("data-abs"); t.setAttribute("data-show", "abs"); }
+        });
+      }
+    }
+  }
+  function tickTimes() {
+    var els = document.querySelectorAll('time[data-rel="on"]');
+    for (var i = 0; i < els.length; i++) {
+      if (els[i].getAttribute("data-show") === "abs") continue;
+      var ms = Date.parse(els[i].getAttribute("datetime"));
+      if (!isNaN(ms)) els[i].textContent = relText(ms);
+    }
+  }
+
+  /* ---- tap-to-copy mono values ---- */
+  function flash(x, y, msg) {
+    var f = document.createElement("div"); f.className = "copy-flash";
+    f.textContent = msg; f.style.left = x + "px"; f.style.top = y + "px";
+    document.body.appendChild(f); setTimeout(function () { f.remove(); }, 1000);
+  }
+  function selectText(el) {
+    try {
+      var r = document.createRange(); r.selectNodeContents(el);
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    } catch (_) {}
+  }
+  function copyValue(el, ev) {
+    var val = el.getAttribute("data-copy");
+    if (val == null) val = (el.textContent || "").trim();
+    if (!val) return;
+    var x = ev ? ev.clientX : (el.getBoundingClientRect().left + 20);
+    var y = ev ? ev.clientY : el.getBoundingClientRect().top;
+    function ok() { el.classList.add("copied"); setTimeout(function () { el.classList.remove("copied"); }, 900); flash(x, y, "copied"); }
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+      navigator.clipboard.writeText(val).then(ok, function () { selectText(el); flash(x, y, "select + copy"); });
+    } else { selectText(el); flash(x, y, "select + copy"); }
+  }
+  function initCopy() {
+    var els = document.querySelectorAll(".copyable:not([data-copy-wired])");
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.closest("a") || el.closest("button")) continue;   // never on links/buttons
+      el.setAttribute("data-copy-wired", "1");
+      el.setAttribute("role", "button");
+      el.setAttribute("tabindex", "0");
+      el.setAttribute("title", "Tap to copy");
+      el.addEventListener("click", function (ev) { copyValue(ev.currentTarget, ev); });
+      el.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); copyValue(ev.currentTarget, null); }
+      });
+    }
+  }
+
+  function initAll() { initTimes(); initCopy(); }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initAll);
+  else initAll();
+  setInterval(tickTimes, 60000);
+  // expose for async-rendered rows (e.g. interfaces refresh) to re-scan
+  window.SentinelUI = { refresh: initAll, relText: relText };
+})();
+</script>
 {% if user %}
 <script>
 (function () {

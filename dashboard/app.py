@@ -177,13 +177,31 @@ def create_app(core_config: Optional[Config] = None,
         tok = request.cookies.get(SESSION_COOKIE)
         return read_session(tok, dash_config.secret) if tok else None
 
+    def _nav_alerts() -> int:
+        """Open high+critical count for the nav badge — best-effort from the
+        newest run's severity stats (run_ids sort lexically by time). Cheap
+        (one file) and never raises; 0 means the badge is absent."""
+        try:
+            results = core_config.results_dir
+            files = [p for p in results.glob("*.json") if not p.name.startswith("_")]
+            if not files:
+                return 0
+            newest = max(files, key=lambda p: p.name)
+            data = json.loads(newest.read_text())
+            by_sev = (data.get("stats") or {}).get("findings_by_severity") or {}
+            return int(by_sev.get("critical", 0)) + int(by_sev.get("high", 0))
+        except Exception:  # noqa: BLE001
+            return 0
+
     def render(name: str, request: Request, **ctx) -> HTMLResponse:
         tok = request.cookies.get(CSRF_COOKIE) or new_csrf_token()
         # The global live-scan indicator (in base.html) needs the active run on
         # EVERY page; routes that already pass `active` keep their value.
         ctx.setdefault("active", run_state.current())
+        user = current_user(request)
+        ctx.setdefault("nav_alerts", _nav_alerts() if user else 0)
         html = env.get_template(name).render(csrf_token=tok, readonly=dash_config.readonly,
-                                             user=current_user(request), **ctx)
+                                             user=user, **ctx)
         resp = HTMLResponse(html)
         if request.cookies.get(CSRF_COOKIE) != tok:
             resp.set_cookie(CSRF_COOKIE, tok, httponly=True, samesite="strict", max_age=43200)

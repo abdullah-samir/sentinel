@@ -45,12 +45,12 @@
     <div class="table-wrap">
     <table>
       <tr><th>Transport</th><td class="mono">{{ st.transport or '—' }}</td>
-          <th>Source</th><td class="mono">{{ esp.source or '—' }}</td></tr>
+          <th>Source</th><td class="mono{{ ' copyable' if esp.source }}">{{ esp.source or '—' }}</td></tr>
       <tr><th>Wi-Fi connected</th><td class="mono">{{ st.wifi_connected if st.wifi_connected not in (none,'') else '—' }}</td>
           <th>Dropped frames</th><td class="mono">{{ st.dropped if st.dropped not in (none,'') else '—' }}</td></tr>
       <tr><th>ESP uptime (ms, relative)</th><td class="mono">{{ st.uptime_ms if st.uptime_ms not in (none,'') else '—' }}</td>
           <th>Heartbeats seen</th><td class="mono">{{ st.heartbeats if st.heartbeats not in (none,'') else '—' }}</td></tr>
-      <tr><th>Last run</th><td class="mono">{{ esp.finished_at or esp.started_at or '—' }}</td>
+      <tr><th>Last run</th><td class="mono"><time datetime="{{ esp.finished_at or esp.started_at }}">{{ esp.finished_at or esp.started_at or '—' }}</time></td>
           <th>Run</th><td class="mono"><a href="/run/{{ esp.run_id }}">{{ esp.run_id }}</a></td></tr>
     </table>
     </div>
@@ -83,7 +83,7 @@
             <td class="mono">{{ d.type }}</td>
             <td class="mono">{{ d.target }}</td>
             <td class="mono">{{ d.evidence }}</td>
-            <td class="mono">{{ d.timestamp }}</td>
+            <td class="mono"><time datetime="{{ d.timestamp }}">{{ d.timestamp }}</time></td>
           </tr>
         {% endfor %}
         </tbody>

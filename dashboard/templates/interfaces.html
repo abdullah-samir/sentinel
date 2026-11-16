@@ -124,7 +124,7 @@
     <tbody>
       <tr>
         <td>ESP32-S3 Wi-Fi detection sensor</td>
-        <td class="mono">{{ esp.source or '/dev/ttyACM0' }}</td>
+        <td class="mono copyable">{{ esp.source or '/dev/ttyACM0' }}</td>
         <td>
           {% if esp.found and esp.alive %}
             <span class="pill" style="background:#1d2a1e;color:#2DD4BF">alive</span>
@@ -136,7 +136,7 @@
             <span class="pill" style="background:#1a2232;color:#8B98AB">not seen</span>
           {% endif %}
         </td>
-        <td class="mono muted">{{ esp.finished_at or esp.started_at or '—' }}</td>
+        <td class="mono muted"><time datetime="{{ esp.finished_at or esp.started_at }}">{{ esp.finished_at or esp.started_at or '—' }}</time></td>
       </tr>
     </tbody>
   </table>
