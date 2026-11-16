@@ -255,17 +255,21 @@ def mgmt_ap_interface_choices(config, registry, selected: str = "",
         holder = ""
         if busy:
             holder = res.get("label") or ("run " + str(res.get("run_id", "")))
-        selectable = usb and ap_capable and not busy and not unsafe and not is_onboard
+        # Any AP-capable Wi-Fi interface that is NOT wlan0 and NOT the live uplink/SSH
+        # is selectable — a spare USB dongle OR the onboard chip when it is free (the
+        # real safety rule is "not the uplink", which `unsafe` enforces). USB is still
+        # surfaced (MAC + port) to tell identical dongles apart, just not required.
+        selectable = ap_capable and not busy and not unsafe and not is_onboard
         if is_onboard:
-            note = "onboard adapter — never the management AP"
+            note = "wlan0 — reserved for the uplink by convention"
         elif unsafe:
             note = "default-route / SSH — protected"
         elif busy:
             note = "busy — in use by " + holder
-        elif not usb:
-            note = "built-in — use a dedicated USB adapter"
         elif cap is False:
             note = "not AP-capable"
+        elif not usb:
+            note = "onboard — free, usable as the AP"
         else:
             note = ""
         out.append({

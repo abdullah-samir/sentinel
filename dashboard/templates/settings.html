@@ -167,7 +167,8 @@
 <div class="panel" id="mgmt-ap">
   <h2>Management hotspot <span class="pill" style="{{ 'color:#34D399;border-color:#1f5a4a' if mgmt.mgmt_ap_enabled else '' }}">{{ 'ON' if mgmt.mgmt_ap_enabled else 'OFF' }}</span></h2>
   <p class="muted" style="font-size:12px;max-width:640px">
-    An always-on Wi-Fi network — on a <b>dedicated USB adapter</b> — so you can reach this
+    An always-on Wi-Fi network — on a <b>dedicated Wi-Fi adapter</b> (a spare USB dongle,
+    or the Pi's onboard chip when it isn't your uplink) — so you can reach this
     dashboard from your phone <b>at any time, even when the Pi is offline</b>. Unlike
     provisioning above, it is a normal management network (no captive portal, no DNS
     hijack) and it stays up regardless of internet. <b>Ships disabled.</b> It <b>never</b>
@@ -192,7 +193,7 @@
 
     <label>Dedicated interface
       <select name="mgmt_ap_ifname" {{ 'disabled' if moff }}>
-        <option value="">— choose a dedicated USB adapter —</option>
+        <option value="">— choose a dedicated Wi-Fi adapter —</option>
         {% for i in mgmt_ifaces %}
           <option value="{{ i.iface }}" {{ 'selected' if i.selected }} {{ 'disabled' if not i.selectable }}>
             {{ i.iface }}{% if i.mac %} · {{ i.mac }}{% endif %}{% if i.usb_path %} · usb {{ i.usb_path }}{% endif %}{% if i.note %} — {{ i.note }}{% endif %}</option>
@@ -203,7 +204,7 @@
       </select>
       <span class="muted" style="font-size:12px">Two identical dongles are told apart by MAC + USB port. <span class="mono">wlan0</span> and the uplink/SSH interface are never selectable.</span></label>
     {% if not mgmt_selectable %}
-      <p class="muted" style="font-size:12px">No dedicated USB Wi-Fi adapter is available right now. Plug one in (keeping <span class="mono">wlan0</span> as the uplink) and reload.</p>
+      <p class="muted" style="font-size:12px">No free AP-capable Wi-Fi adapter is available right now (every one is the uplink/SSH interface or busy). Plug in a spare USB dongle, or free the onboard chip, and reload.</p>
     {% endif %}
 
     <label>Hotspot name (SSID)

@@ -6,7 +6,7 @@
 # NOTHING on the Pi — it only observes the setting. It is INDEPENDENT of the
 # provisioning service (separate con-name "sentinel-mgmt-ap", separate subnet) and
 # the two can run at once on two radios.
-Description=Sentinel management hotspot supervisor (root; dedicated USB NIC AP)
+Description=Sentinel management hotspot supervisor (root; dedicated Wi-Fi NIC AP)
 Documentation=file:/home/sentinel/sentinel/deploy/README.md
 After=NetworkManager.service
 Wants=NetworkManager.service

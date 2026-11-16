@@ -3,18 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sentinel report — quick_recon — 20261007T143210_quick_recon_a1b2c3</title>
+<title>Sentinel · Report — quick_recon</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="icon" type="image/png" sizes="180x180" href="/static/favicon.png">
 <script>document.documentElement.classList.add('js')</script>
 <style>
+  /* self-hosted fonts (served by the dashboard; a standalone file falls back) */
+  @font-face{font-family:"Space Grotesk";font-weight:700;font-display:swap;src:url("/static/fonts/spacegrotesk-700.woff2") format("woff2")}
+  @font-face{font-family:"InterS";font-weight:400;font-display:swap;src:url("/static/fonts/inter-400.woff2") format("woff2")}
+  @font-face{font-family:"InterS";font-weight:600;font-display:swap;src:url("/static/fonts/inter-600.woff2") format("woff2")}
+  @font-face{font-family:"JetBrains Mono";font-weight:400;font-display:swap;src:url("/static/fonts/jetbrainsmono-400.woff2") format("woff2")}
   :root{
-    --bg:#0E1420; --panel:#151D2C; --border:#24324A; --ink:#EAF0F8; --muted:#8B98AB;
-    --teal:#2DD4BF; --orange:#F5953E; --red:#E5484D;
-    --sans:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    --mono:ui-monospace, Menlo, Consolas, monospace;
+    --bg:#0A0E16; --panel:#151D2C; --surface-1:#111826; --border:#22304A; --border-strong:#31425f;
+    --ink:#EAF1FB; --muted:#7E8CA3; --teal:#22D3EE; --cyan:#22D3EE; --orange:#FF9B3D; --red:#FF4D5E;
+    --glow:rgba(34,211,238,.4);
+    --sans:"InterS", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    --mono:"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    --display:"Space Grotesk", var(--sans);
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:15px}
-  a{color:var(--teal)}
+  body{margin:0;color:var(--ink);font-family:var(--sans);line-height:1.55;font-size:15px;
+    background:
+      radial-gradient(1000px 560px at 80% -10%, rgba(34,211,238,.08), transparent 60%),
+      radial-gradient(800px 520px at 5% 110%, rgba(167,139,250,.07), transparent 55%),
+      linear-gradient(180deg,#0D121D,#0A0E16 42%);background-attachment:fixed}
+  a{color:var(--cyan)}
+  header.top .t,h2,h3{font-family:var(--display);letter-spacing:-.01em}
+  .gbadge{box-shadow:0 0 16px -8px currentColor}
+  .panel{background:linear-gradient(180deg,#151D2C,#111826)}
+  .host{transition:border-color .2s,box-shadow .2s} .host:hover{border-color:var(--border-strong)}
+  details.host-detail[open]>*:not(summary){animation:dOpen .22s cubic-bezier(.16,1,.3,1)}
+  @keyframes dOpen{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+  *{scrollbar-width:thin;scrollbar-color:var(--border-strong) transparent}
+  ::-webkit-scrollbar{width:11px;height:11px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:999px;border:3px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:var(--cyan);background-clip:padding-box}
   .wrap{max-width:1040px;margin:0 auto;padding:24px 16px 64px}
   header.top{display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border);
        padding-bottom:16px;margin-bottom:16px}
@@ -125,7 +150,7 @@
 
   <!-- Hero -->
   <div class="panel hero">
-    <div class="grade" data-grade="F" style="color:#E5484D">
+    <div class="grade" data-grade="F" style="color:#FF4D5E">
       F<span class="lbl">overall</span>
     </div>
     <div>
@@ -143,20 +168,20 @@
         <div class="kpi"><div class="n">2</div><div class="l">Findings</div></div>
       </div>
       <div class="badges">
-        <span class="badge"><span class="dot" style="background:#E5484D"></span>critical 0</span>
-        <span class="badge"><span class="dot" style="background:#F5953E"></span>high 2</span>
-        <span class="badge"><span class="dot" style="background:#E0B341"></span>medium 0</span>
+        <span class="badge"><span class="dot" style="background:#FF4D5E"></span>critical 0</span>
+        <span class="badge"><span class="dot" style="background:#FF9B3D"></span>high 2</span>
+        <span class="badge"><span class="dot" style="background:#F2C94C"></span>medium 0</span>
         <span class="badge"><span class="dot" style="background:#2DD4BF"></span>low 0</span>
-        <span class="badge"><span class="dot" style="background:#8B98AB"></span>info 0</span>
+        <span class="badge"><span class="dot" style="background:#7E8CA3"></span>info 0</span>
       </div>
     </div>
-    <div><svg viewBox="0 0 180 180" width="180" height="180" role="img" aria-label="Findings by severity"><circle cx="90" cy="90" r="66" fill="none" stroke="#24324A" stroke-width="26"/><g transform="rotate(-90 90 90)"><circle cx="90" cy="90" r="66" fill="none" stroke="#F5953E" stroke-width="26" stroke-dasharray="414.690 414.690" stroke-dashoffset="-0.000"><title>high: 2</title></circle></g><text x="90" y="88" text-anchor="middle" font-size="34" font-weight="700" fill="#EAF0F8" font-family="ui-sans-serif, system-ui">2</text><text x="90" y="110" text-anchor="middle" font-size="13" fill="#8B98AB" font-family="ui-sans-serif, system-ui">findings</text></svg></div>
+    <div><svg viewBox="0 0 180 180" width="180" height="180" role="img" aria-label="Findings by severity"><circle cx="90" cy="90" r="66" fill="none" stroke="#24324A" stroke-width="26"/><g transform="rotate(-90 90 90)"><circle cx="90" cy="90" r="66" fill="none" stroke="#FF9B3D" stroke-width="26" stroke-dasharray="414.690 414.690" stroke-dashoffset="-0.000"><title>high: 2</title></circle></g><text x="90" y="88" text-anchor="middle" font-size="34" font-weight="700" fill="#EAF0F8" font-family="ui-sans-serif, system-ui">2</text><text x="90" y="110" text-anchor="middle" font-size="13" fill="#8B98AB" font-family="ui-sans-serif, system-ui">findings</text></svg></div>
   </div>
 
   <!-- Per-host risk heat strip -->
   <div class="heat">
     <h2>Per-host risk</h2>
-    <svg viewBox="0 0 600 40" width="100%" height="40" role="img" aria-label="Per-host risk heat strip"><g><rect x="0.00" y="0" width="600.00" height="40" fill="#E5484D" rx="2"><title>192.168.1.8 — grade F (score 16)</title></rect><text x="300.00" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">F</text></g></svg>
+    <svg viewBox="0 0 600 40" width="100%" height="40" role="img" aria-label="Per-host risk heat strip"><g><rect x="0.00" y="0" width="600.00" height="40" fill="#FF4D5E" rx="2"><title>192.168.1.8 — grade F (score 16)</title></rect><text x="300.00" y="25" text-anchor="middle" font-size="13" font-weight="700" fill="#0E1420" font-family="ui-sans-serif, system-ui">F</text></g></svg>
   </div>
 
   <!-- Interactive controls (progressive enhancement; hidden if JS off / in print) -->
@@ -164,15 +189,15 @@
     <input id="f-search" type="search" placeholder="Search hosts &amp; findings…" aria-label="Search hosts and findings">
     <div class="sev-filter">
       <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="critical" checked>
-        <span class="dot" style="background:#E5484D"></span>critical</label>
+        <span class="dot" style="background:#FF4D5E"></span>critical</label>
       <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="high" checked>
-        <span class="dot" style="background:#F5953E"></span>high</label>
+        <span class="dot" style="background:#FF9B3D"></span>high</label>
       <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="medium" checked>
-        <span class="dot" style="background:#E0B341"></span>medium</label>
+        <span class="dot" style="background:#F2C94C"></span>medium</label>
       <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="low" checked>
         <span class="dot" style="background:#2DD4BF"></span>low</label>
       <label class="sev-chip"><input class="sev-toggle" type="checkbox" data-sev="info" checked>
-        <span class="dot" style="background:#8B98AB"></span>info</label>
+        <span class="dot" style="background:#7E8CA3"></span>info</label>
     </div>
     <div class="tool-actions">
       <button type="button" id="expand-all">Expand all</button>
@@ -188,7 +213,9 @@
     <section class="host" data-host="192.168.1.8">
       <div class="hh">
         <span class="ip">192.168.1.8</span>
-        <span class="gbadge" style="background:#E5484D">F</span>
+        <span class="gbadge" style="background:#FF4D5E">F</span>
+          <span class="muted">alive</span>
+          <span class="muted">2 ports</span>
         <button type="button" class="collapse-btn" aria-label="Toggle host" aria-expanded="true">–</button>
       </div>
       <div class="host-body">
@@ -198,7 +225,7 @@
 <span>OS: <code>Linux</code></span>          <span>risk score: <code>16</code></span>
         </div>
         <div class="finding" data-fid="f-0001" data-sev="high">
-          <span class="chip" style="background:#F5953E">high</span>
+          <span class="chip" style="background:#FF9B3D">high</span>
           <div class="f-body">
             <div class="f-title">Telnet (23/tcp) open</div>
 <div class="f-detail">cleartext credentials</div><pre class="f-ev">nmap -sV -&gt; 23/tcp open telnet</pre>            <div class="remediation"><strong>Fix:</strong> Disable Telnet; manage the device over SSH instead.
@@ -206,7 +233,7 @@
           </div>
         </div>
         <div class="finding" data-fid="f-0002" data-sev="high">
-          <span class="chip" style="background:#F5953E">high</span>
+          <span class="chip" style="background:#FF9B3D">high</span>
           <div class="f-body">
             <div class="f-title">HTTP (80/tcp) open</div>
 <div class="f-detail">admin panel reachable without TLS</div><pre class="f-ev">nmap -sV -&gt; 80/tcp open http (lighttpd)</pre>            <div class="remediation"><strong>Fix:</strong> Serve over HTTPS/TLS and redirect HTTP to HTTPS.
@@ -230,14 +257,14 @@
       </tr></thead>
       <tbody>
         <tr class="frow" data-fid="f-0001" data-sev="high">
-          <td data-rank="3"><span class="chip" style="background:#F5953E">high</span></td>
+          <td data-rank="3"><span class="chip" style="background:#FF9B3D">high</span></td>
           <td class="mono">192.168.1.8</td>
           <td>Telnet (23/tcp) open</td>
           <td class="mono">red.recon_nmap</td>
           <td class="mono">nmap -sV -&gt; 23/tcp open telnet</td>
         </tr>
         <tr class="frow" data-fid="f-0002" data-sev="high">
-          <td data-rank="3"><span class="chip" style="background:#F5953E">high</span></td>
+          <td data-rank="3"><span class="chip" style="background:#FF9B3D">high</span></td>
           <td class="mono">192.168.1.8</td>
           <td>HTTP (80/tcp) open</td>
           <td class="mono">red.recon_nmap</td>
@@ -264,14 +291,14 @@
           <td>yes</td>
           <td class="mono" data-num="2">23, 80</td>
           <td class="mono">Linux</td>
-          <td data-rank="16"><span class="gbadge" style="background:#E5484D">F</span></td>
+          <td data-rank="16"><span class="gbadge" style="background:#FF4D5E">F</span></td>
         </tr>
       </tbody>
     </table>
   </div>
 
   <footer>
-    <div>Generated 2026-10-09T23:12:14Z · Sentinel v0.1.0</div>
+    <div>Generated 2026-11-16T18:48:09Z · Sentinel v0.1.0</div>
     <div class="formula">Risk score = sum of finding weights (info=0, low=1, medium=4, high=8, critical=16). Grade by score: A=0, B=1-3, C=4-7, D=8-15, F&gt;=16. A host&#39;s score sums its own findings; the overall score sums every finding.</div>
   </footer>
 
