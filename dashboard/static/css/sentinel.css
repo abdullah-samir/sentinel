@@ -563,26 +563,59 @@ time[datetime].rel.tap:hover{border-bottom-color:var(--border-strong)}
 @keyframes loginIn{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
 @keyframes wordIn{from{opacity:0;letter-spacing:.32em;filter:blur(2px)}to{opacity:1;letter-spacing:0;filter:none}}
 
-/* ---- post-login intro overlay (radar lock-on → iris reveal) ---- */
-.intro-ov{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(circle at 50% 50%, var(--bg-2), var(--bg) 70%);
-  animation:introOut .5s var(--ease) 1.15s forwards}
-.intro-ov .intro-radar{position:relative;width:200px;height:200px;border-radius:50%;
-  border:1px solid var(--glow-soft);box-shadow:0 0 40px -14px var(--glow) inset, 0 0 40px -18px var(--glow)}
-.intro-ov .intro-radar::before{content:"";position:absolute;inset:0;border-radius:50%;
-  background:conic-gradient(from 0deg, transparent 0 300deg, rgba(34,211,238,.1) 340deg, rgba(34,211,238,.5) 360deg);
-  -webkit-mask-image:radial-gradient(circle, transparent 0 8px, #000 8px);
-  mask-image:radial-gradient(circle, transparent 0 8px, #000 8px);
-  animation:introSweep 1.1s var(--ease-out) 1}
-.intro-ov .intro-radar::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;
-  margin:-6px 0 0 -6px;border-radius:50%;background:var(--cyan);box-shadow:0 0 18px var(--glow);
-  animation:introBlip 1.1s var(--ease-out) 1}
-.intro-ov .intro-rings{position:absolute;width:200px;height:200px;border-radius:50%;
-  border:1px solid var(--glow);animation:introLock 1s var(--ease-out) 1 both}
-@keyframes introSweep{from{transform:rotate(0)}to{transform:rotate(540deg)}}
-@keyframes introBlip{0%{opacity:0;transform:scale(.3)}30%{opacity:1;transform:scale(1)}100%{opacity:.8;transform:scale(1)}}
-@keyframes introLock{0%{transform:scale(1.6);opacity:0}60%{opacity:.9}100%{transform:scale(1);opacity:.5}}
-@keyframes introOut{to{opacity:0;visibility:hidden;clip-path:circle(0% at 50% 50%)}}
+/* ---- post-login intro: a radar scope locks on, then irises open to the app ----
+   Hidden by default; shown only when the head script set html.intro-armed,
+   so it is already covering the screen on the first paint (no dashboard flash).
+   The overlay animates itself out (forwards) so it clears even without JS. */
+.intro-ov{position:fixed;inset:0;z-index:400;display:none;flex-direction:column;
+  align-items:center;justify-content:center;gap:26px;overflow:hidden;
+  background:radial-gradient(60% 60% at 50% 46%, #0c1322, var(--bg) 78%)}
+.intro-ov::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg, rgba(34,211,238,.05) 0 1px, transparent 1px 3px);
+  opacity:.35;mix-blend-mode:screen;animation:introScan 1.3s linear 1}
+html.intro-armed .intro-ov{display:flex;animation:introOut .55s var(--ease) 1.45s both}
+.intro-scope{position:relative;width:min(62vw,230px);height:min(62vw,230px);border-radius:50%;
+  animation:introScopeIn .7s var(--ease-out) both}
+.intro-ring{position:absolute;inset:0;margin:auto;border-radius:50%;border:1px solid var(--glow-soft)}
+.intro-ring.r1{inset:0}
+.intro-ring.r2{inset:18%}
+.intro-ring.r3{inset:36%;border-color:var(--glow)}
+.intro-cross{position:absolute;left:50%;top:50%;background:var(--glow-soft)}
+.intro-cross.x{width:100%;height:1px;transform:translate(-50%,-50%)}
+.intro-cross.y{width:1px;height:100%;transform:translate(-50%,-50%)}
+.intro-sweep{position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(from -90deg, transparent 0 270deg,
+    rgba(34,211,238,.05) 300deg, rgba(34,211,238,.18) 340deg, rgba(34,211,238,.6) 360deg);
+  -webkit-mask-image:radial-gradient(circle, transparent 0 6px, #000 6px);
+  mask-image:radial-gradient(circle, transparent 0 6px, #000 6px);
+  transform-origin:center;animation:introSpin 1.45s cubic-bezier(.3,.1,.1,1) 1}
+.intro-core{position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;
+  border-radius:50%;background:var(--cyan);box-shadow:0 0 20px var(--glow),0 0 6px #fff;
+  animation:introCore 1.45s var(--ease-out) 1}
+.intro-blip{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--cyan-2);
+  box-shadow:0 0 12px var(--glow);opacity:0;transform:scale(.2)}
+.intro-blip.b1{left:68%;top:30%;animation:introBlip .7s var(--ease-out) .42s both}
+.intro-blip.b2{left:33%;top:38%;animation:introBlip .7s var(--ease-out) .66s both}
+.intro-blip.b3{left:60%;top:67%;animation:introBlip .7s var(--ease-out) .9s both}
+.intro-blip.b4{left:40%;top:62%;animation:introBlip .7s var(--ease-out) 1.12s both}
+.intro-word{font-family:var(--font-display);font-weight:700;font-size:clamp(28px,8vw,42px);
+  letter-spacing:.01em;color:var(--ink);animation:introWord .8s var(--ease-out) .5s both}
+.intro-word .dot{color:var(--cyan);text-shadow:0 0 16px var(--glow)}
+.intro-status{display:flex;align-items:center;gap:9px;font-family:var(--font-mono);font-size:12px;
+  letter-spacing:.32em;text-transform:uppercase;color:var(--cyan-2);
+  animation:introStatus .5s var(--ease-out) 1.05s both}
+.intro-status-dot{width:7px;height:7px;border-radius:50%;background:var(--grade-a);
+  box-shadow:0 0 10px var(--grade-a);animation:dotPulse 1s var(--ease) infinite}
+@keyframes introScopeIn{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:none}}
+@keyframes introSpin{from{transform:rotate(0)}to{transform:rotate(540deg)}}
+@keyframes introCore{0%{opacity:0;transform:scale(.3)}25%{opacity:1;transform:scale(1.2)}100%{opacity:1;transform:scale(1)}}
+@keyframes introBlip{0%{opacity:0;transform:scale(.2)}35%{opacity:1;transform:scale(1.25)}100%{opacity:.85;transform:scale(1)}}
+@keyframes introWord{from{opacity:0;letter-spacing:.42em;filter:blur(5px);transform:translateY(6px)}
+  to{opacity:1;letter-spacing:.01em;filter:none;transform:none}}
+@keyframes introStatus{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@keyframes introScan{from{background-position:0 0}to{background-position:0 90px}}
+@keyframes introOut{0%{opacity:1;clip-path:circle(140% at 50% 50%)}
+  100%{opacity:0;visibility:hidden;clip-path:circle(0% at 50% 50%)}}
 
 /* ---- themed empty states (radar motif) ---- */
 .empty-state{text-align:center;padding:44px 18px;color:var(--ink-dim)}
@@ -614,8 +647,8 @@ time[datetime].rel.tap:hover{border-bottom-color:var(--border-strong)}
 
 @media (prefers-reduced-motion:reduce){
   .login-sweep,.brand .dot,.brand .dot::after{animation:none!important}
-  .intro-ov{animation:introOut .001ms linear forwards}
-  .intro-ov *::before,.intro-ov *::after,.intro-rings{animation:none!important}
+  /* intro is never armed under reduced-motion; keep it hidden as a belt-and-braces */
+  .intro-ov,html.intro-armed .intro-ov{display:none!important}
   .empty-state .es-ico::after,.errpage .err-radar::before{animation:none!important}
 }
 

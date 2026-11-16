@@ -15,9 +15,41 @@
 <meta name="apple-mobile-web-app-title" content="Sentinel">
 <link rel="preload" href="/static/fonts/spacegrotesk-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/static/css/sentinel.css?v={{ asset_v }}">
+{% if user %}<script>
+/* Decide the post-login intro BEFORE first paint, so the overlay covers the
+   dashboard from the very first frame (no flash of the dashboard first).
+   Sets html.intro-armed only for a fresh, successful login. */
+(function () {
+  try {
+    var raw = localStorage.getItem("sentinel_intro");
+    if (!raw) return;
+    localStorage.removeItem("sentinel_intro");
+    var ts = parseInt(raw, 10);
+    var reduce = false;
+    try { reduce = window.matchMedia("(prefers-reduced-motion:reduce)").matches; } catch (e) {}
+    if (ts && (Date.now() - ts) <= 60000 && !reduce) {
+      document.documentElement.className += " intro-armed";
+    }
+  } catch (e) {}
+})();
+</script>{% endif %}
 {% block head %}{% endblock %}
 </head>
 <body>
+{% if user %}
+<div class="intro-ov" id="introOv" aria-hidden="true">
+  <div class="intro-scope">
+    <span class="intro-ring r1"></span><span class="intro-ring r2"></span><span class="intro-ring r3"></span>
+    <span class="intro-cross x"></span><span class="intro-cross y"></span>
+    <span class="intro-sweep"></span>
+    <span class="intro-blip b1"></span><span class="intro-blip b2"></span>
+    <span class="intro-blip b3"></span><span class="intro-blip b4"></span>
+    <span class="intro-core"></span>
+  </div>
+  <div class="intro-word brand">Sentinel<span class="dot">.</span></div>
+  <div class="intro-status"><span class="intro-status-dot"></span>LINK ESTABLISHED</div>
+</div>
+{% endif %}
 <div class="app">
 {% from "_icons.html" import icon %}
 {% block nav %}
@@ -233,32 +265,26 @@
   });
 })();
 
-/* Post-login intro — once, after a successful login (fresh one-shot flag the
-   login page armed). Skippable (tap/key); reduced-motion = instant; never
-   blocks access (JS off/failed -> dashboard just renders). */
+/* Post-login intro cleanup/skip. The overlay is already painted (armed by the
+   head script before first paint); the CSS animation plays and ends hidden on
+   its own. This just lets a tap/key skip it and removes the node afterwards so
+   it never traps input. Reduced-motion/JS-off never arm it in the first place. */
 (function () {
   "use strict";
-  var KEY = "sentinel_intro", raw = null;
-  try { raw = localStorage.getItem(KEY); localStorage.removeItem(KEY); } catch (e) { return; }
-  if (!raw) return;
-  var ts = parseInt(raw, 10);
-  if (!ts || (Date.now() - ts) > 60000) return;          // stale -> skip
-  var reduce = false;
-  try { reduce = window.matchMedia("(prefers-reduced-motion:reduce)").matches; } catch (e) {}
-  if (reduce) return;                                     // instant: no overlay
-  var ov = document.createElement("div");
-  ov.className = "intro-ov"; ov.setAttribute("aria-hidden", "true");
-  ov.innerHTML = '<div class="intro-rings"></div><div class="intro-radar"></div>';
-  document.body.appendChild(ov);
+  var html = document.documentElement;
+  if (html.className.indexOf("intro-armed") === -1) return;
+  var ov = document.getElementById("introOv");
   var done = false;
   function kill() {
     if (done) return; done = true;
+    html.className = html.className.replace(/\bintro-armed\b/, "").trim();
     if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
     document.removeEventListener("keydown", kill, true);
+    document.removeEventListener("pointerdown", kill, true);
   }
-  ov.addEventListener("click", kill);
+  document.addEventListener("pointerdown", kill, true);   // tap/click anywhere skips
   document.addEventListener("keydown", kill, true);
-  setTimeout(kill, 1800);
+  setTimeout(kill, 2100);                                 // just past the animation end
 })();
 </script>
 
