@@ -43,7 +43,8 @@ from core.state import (get_interface_registry, interface_safety_check,
 from core.store import Store
 from core.workflows import load_workflows
 from dashboard.auth import (
-    RateLimiter, csrf_ok, hash_password, make_session, new_csrf_token, read_session,
+    RateLimiter, TERMINAL_MAX_AGE, csrf_ok, hash_password, make_session,
+    make_terminal_token, new_csrf_token, read_session, read_terminal_token,
     verify_password,
 )
 from dashboard.config import DashConfig, load_dash_config, save_dash_config
@@ -95,6 +96,7 @@ _TEMPLATES = Path(__file__).parent / "templates"
 
 SESSION_COOKIE = "sentinel_session"
 CSRF_COOKIE = "sentinel_csrf"
+TERM_COOKIE = "sentinel_term"        # short-lived web-terminal unlock token
 
 
 def _version() -> str:
@@ -888,6 +890,16 @@ def create_app(core_config: Optional[Config] = None,
             return "The web terminal is disabled in read-only mode."
         return None
 
+    def _terminal_unlocked_user(request: Request) -> Optional[str]:
+        """The user a valid, unexpired terminal-unlock cookie belongs to, else
+        None. The unlock is separate from the login session and short-lived."""
+        tok = request.cookies.get(TERM_COOKIE)
+        return read_terminal_token(tok, dash_config.secret) if tok else None
+
+    def _terminal_unlocked(request: Request) -> bool:
+        u = current_user(request)
+        return bool(u) and _terminal_unlocked_user(request) == u
+
     @app.get("/terminal")
     def terminal_page(request: Request):
         if not current_user(request):
@@ -895,18 +907,84 @@ def create_app(core_config: Optional[Config] = None,
         reason = _terminal_denied_reason()
         if reason:
             return render("terminal.html", request, nav_active="terminal",
-                          disabled=True, disabled_reason=reason)
-        return render("terminal.html", request, nav_active="terminal", disabled=False,
-                      disabled_reason="")
+                          mode="disabled", disabled=True, disabled_reason=reason)
+        if not dash_config.terminal_password_set:
+            mode = "setup"                            # first use: set a terminal password
+        elif not _terminal_unlocked(request):
+            mode = "locked"                           # password set, not yet unlocked
+        else:
+            mode = "open"
+        notes = {"short": "Terminal password must be at least 8 characters.",
+                 "mismatch": "The passwords do not match.",
+                 "bad": "Incorrect terminal password.",
+                 "locked": "Too many wrong terminal passwords — locked briefly.",
+                 "csrf": "Invalid request (CSRF). Try again."}
+        return render("terminal.html", request, nav_active="terminal", mode=mode,
+                      disabled=False, disabled_reason="",
+                      term_error=notes.get(request.query_params.get("e", "")),
+                      term_minutes=TERMINAL_MAX_AGE // 60)
+
+    @app.post("/terminal/unlock")
+    async def terminal_unlock(request: Request):
+        if not current_user(request):
+            return login_redirect()
+        reason = _terminal_denied_reason()
+        if reason:
+            return RedirectResponse("/terminal", status_code=303)
+        user = current_user(request)
+        ip = request.client.host if request.client else "?"
+        tkey = f"{ip}#term"                           # own lockout bucket, separate from login
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return RedirectResponse("/terminal?e=csrf", status_code=303)
+        if limiter.blocked(tkey):
+            return RedirectResponse("/terminal?e=locked", status_code=303)
+        if not dash_config.terminal_password_set:
+            # first-use setup: choose the terminal password
+            new = form.get("new", "")
+            if len(new) < 8:
+                return RedirectResponse("/terminal?e=short", status_code=303)
+            if new != form.get("confirm", ""):
+                return RedirectResponse("/terminal?e=mismatch", status_code=303)
+            dash_config.terminal_password_hash = hash_password(new)
+            save_dash_config(dash_config)
+            log.warning("TERMINAL password set user=%s ip=%s", user, ip)
+        else:
+            if not verify_password(form.get("password", ""), dash_config.terminal_password_hash):
+                limiter.record_failure(tkey)
+                log.warning("TERMINAL unlock FAILED user=%s ip=%s", user, ip)
+                return RedirectResponse("/terminal?e=bad", status_code=303)
+        limiter.reset(tkey)
+        log.warning("TERMINAL unlocked user=%s ip=%s (shell armed for %d min)",
+                    user, ip, TERMINAL_MAX_AGE // 60)
+        resp = RedirectResponse("/terminal", status_code=303)
+        resp.set_cookie(TERM_COOKIE, make_terminal_token(user, dash_config.secret),
+                        httponly=True, samesite="strict", max_age=TERMINAL_MAX_AGE)
+        return resp
+
+    @app.post("/terminal/lock")
+    async def terminal_lock(request: Request):
+        if not current_user(request):
+            return login_redirect()
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return RedirectResponse("/terminal", status_code=303)
+        resp = RedirectResponse("/terminal", status_code=303)
+        resp.delete_cookie(TERM_COOKIE)
+        return resp
 
     @app.websocket("/ws/terminal")
     async def ws_terminal(ws: WebSocket):
         # Authenticate from the signed session cookie BEFORE accepting, and honor
-        # the same gates as the page (enabled + not read-only).
+        # the same gates as the page (enabled + not read-only), PLUS a valid
+        # short-lived terminal-unlock cookie bound to the same user.
         tok = ws.cookies.get(SESSION_COOKIE)
         user = read_session(tok, dash_config.secret) if tok else None
-        if not user or not dash_config.shell_enabled or dash_config.readonly:
-            await ws.close(code=1008)                 # policy violation
+        term_tok = ws.cookies.get(TERM_COOKIE)
+        term_user = read_terminal_token(term_tok, dash_config.secret) if term_tok else None
+        if (not user or not dash_config.shell_enabled or dash_config.readonly
+                or not dash_config.terminal_password_set or term_user != user):
+            await ws.close(code=1008)                 # policy violation / not unlocked
             return
         await ws.accept()
         client_ip = ws.client.host if ws.client else "?"
@@ -1051,6 +1129,8 @@ def create_app(core_config: Optional[Config] = None,
                       discovery=settings_mod.discovery_prefs(core_config),
                       prov=prov_mod.redacted(prov_mod.load_provisioning(core_config)),
                       prov_ifaces=prov_disc.ap_capable_interfaces(core_config),
+                      shell_enabled=dash_config.shell_enabled,
+                      terminal_password_set=dash_config.terminal_password_set,
                       msg=request.query_params.get("msg"))
 
     @app.post("/settings/password")
@@ -1071,6 +1151,27 @@ def create_app(core_config: Optional[Config] = None,
         dash_config.password_hash = hash_password(new)
         save_dash_config(dash_config)
         return RedirectResponse("/settings?msg=pwchanged", status_code=303)
+
+    @app.post("/settings/terminal_password")
+    async def settings_terminal_password(request: Request):
+        if not current_user(request):
+            return login_redirect()
+        form = await _parse_form(request)
+        if not csrf_ok(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+            return HTMLResponse("CSRF validation failed.", status_code=403)
+        # When one already exists, require the current terminal password to change it.
+        if dash_config.terminal_password_set and not verify_password(
+                form.get("current", ""), dash_config.terminal_password_hash):
+            return RedirectResponse("/settings?msg=badtermcurrent", status_code=303)
+        new = form.get("new", "")
+        if len(new) < 8:
+            return RedirectResponse("/settings?msg=termtooshort", status_code=303)
+        if new != form.get("confirm", ""):
+            return RedirectResponse("/settings?msg=termmismatch", status_code=303)
+        dash_config.terminal_password_hash = hash_password(new)
+        save_dash_config(dash_config)
+        log.warning("TERMINAL password changed via settings user=%s", current_user(request))
+        return RedirectResponse("/settings?msg=termpwchanged", status_code=303)
 
     @app.post("/settings/config")
     async def settings_config(request: Request):

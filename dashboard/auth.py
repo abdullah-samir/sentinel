@@ -24,6 +24,9 @@ from typing import Dict, List, Optional
 _N, _R, _P = 2 ** 14, 8, 1
 _MAXMEM = 64 * 1024 * 1024
 _SESSION_MAX_AGE = 12 * 3600
+# A terminal unlock is deliberately short-lived: the full-shell grant re-locks
+# itself after inactivity, independent of the (longer) dashboard session.
+TERMINAL_MAX_AGE = 30 * 60
 
 
 # --- password hashing -----------------------------------------------------
@@ -68,6 +71,32 @@ def read_session(token: str, secret: str, max_age: int = _SESSION_MAX_AGE) -> Op
         if not hmac.compare_digest(mac, _sign(payload, secret)):
             return None
         if int(time.time()) - int(issued) > max_age:
+            return None
+        return user
+    except Exception:  # noqa: BLE001
+        return None
+
+
+# --- terminal unlock token ------------------------------------------------
+# A SEPARATE signed token from the session, gating the web terminal (RCE) behind
+# its own password. The "term|" payload prefix means a dashboard session cookie
+# can never be replayed as a terminal unlock, and it carries its own short expiry.
+def make_terminal_token(user: str, secret: str) -> str:
+    payload = f"term|{user}|{int(time.time())}"
+    token = f"{payload}|{_sign(payload, secret)}"
+    return base64.urlsafe_b64encode(token.encode()).decode()
+
+
+def read_terminal_token(token: str, secret: str, max_age: int = TERMINAL_MAX_AGE) -> Optional[str]:
+    try:
+        raw = base64.urlsafe_b64decode(token.encode()).decode()
+        payload, mac = raw.rsplit("|", 1)
+        if not hmac.compare_digest(mac, _sign(payload, secret)):
+            return None
+        if not payload.startswith("term|"):
+            return None
+        user, issued = payload[len("term|"):].rsplit("|", 1)
+        if not user or int(time.time()) - int(issued) > max_age:
             return None
         return user
     except Exception:  # noqa: BLE001

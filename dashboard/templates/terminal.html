@@ -1,24 +1,68 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Terminal{% endblock %}
 {% block content %}
 <h1>Terminal</h1>
 
 <div class="banner err">
   <strong>Full shell as the <span class="mono">sentinel</span> user.</strong>
-  Anyone with a dashboard session can run arbitrary commands on this Pi here. Use
+  Anyone who can open a session here can run arbitrary commands on this Pi. Use
   this only on a trusted, non-public network — never while the public tunnel is
-  up. Every session is logged.
+  up. Every session is logged, and it is gated behind a separate terminal
+  password.
 </div>
+
+{% if term_error %}<div class="banner err">{{ term_error }}</div>{% endif %}
 
 {% if disabled %}
   <div class="panel"><div class="empty">{{ disabled_reason }}</div></div>
+
+{% elif mode == 'setup' %}
+  <div class="panel" style="max-width:420px">
+    <h2>Set a terminal password</h2>
+    <p class="muted" style="font-size:13px;margin:0 0 12px">
+      The web terminal grants a full shell, so it is protected by its own
+      password — separate from your dashboard login. Choose one now to unlock it.
+    </p>
+    <form method="post" action="/terminal/unlock" style="display:flex;flex-direction:column;gap:10px">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="password" name="new" placeholder="new terminal password (min 8 chars)"
+             autocomplete="new-password" autofocus required minlength="8">
+      <input type="password" name="confirm" placeholder="confirm terminal password"
+             autocomplete="new-password" required minlength="8">
+      <button class="btn primary" type="submit">{{ icon('shield') }} Set &amp; unlock</button>
+    </form>
+  </div>
+
+{% elif mode == 'locked' %}
+  <div class="panel" style="max-width:420px">
+    <h2>Terminal locked</h2>
+    <p class="muted" style="font-size:13px;margin:0 0 12px">
+      Enter the terminal password to open a shell. The unlock lasts about
+      {{ term_minutes }} minutes of this session, then re-locks.
+    </p>
+    <form method="post" action="/terminal/unlock" style="display:flex;flex-direction:column;gap:10px">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="password" name="password" placeholder="terminal password"
+             autocomplete="off" autofocus required>
+      <button class="btn primary" type="submit">{{ icon('shield') }} Unlock terminal</button>
+    </form>
+    <p class="muted" style="font-size:12px;margin-top:10px">
+      Change it on the <a href="/settings">Settings</a> page.</p>
+  </div>
+
 {% else %}
   <link rel="stylesheet" href="/static/vendor/xterm.css">
   <div class="panel" style="padding:10px">
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
       <span id="tstatus" class="pill" style="background:#24324A;color:#8B98AB">connecting…</span>
       <button id="treconnect" class="btn sm" type="button" style="display:none">Reconnect</button>
       <span class="muted" style="font-size:12px">bash · {{ user }}</span>
+      <span class="spacer" style="margin-left:auto"></span>
+      <form method="post" action="/terminal/lock" style="margin:0">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <button class="btn sm" type="submit" title="End the unlock and re-lock the terminal">Lock terminal</button>
+      </form>
     </div>
     <div id="term" style="height:70vh;background:#000;border-radius:8px;overflow:hidden"></div>
   </div>
@@ -57,7 +101,7 @@
       ws.onopen = function () { setStatus('connected', '#2DD4BF'); sendResize(); term.focus(); };
       ws.onmessage = function (ev) { term.write(ev.data); };
       ws.onclose = function () {
-        setStatus('disconnected', '#E5484D');
+        setStatus('disconnected (locked or ended)', '#E5484D');
         reconnectEl.style.display = 'inline-block';
       };
       ws.onerror = function () { setStatus('error', '#E5484D'); };

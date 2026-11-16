@@ -9,9 +9,11 @@
   'provsaved':'Provisioning settings saved.',
   'provwarn':'Provisioning settings saved (with a warning — see the interface note).',
   'provinvalid':'Provisioning settings invalid — not saved. Check the password (8–63 chars), interface and subnet.',
+  'termpwchanged':'Terminal password set.','badtermcurrent':'Current terminal password is incorrect.',
+  'termtooshort':'Terminal password must be at least 8 characters.','termmismatch':'Terminal passwords do not match.',
   'readonly':'Read-only mode — change not saved.'} %}
 {% if msg and notes.get(msg) %}
-<div class="banner {{ 'err' if msg in ('badcurrent','tooshort','mismatch','invalid','provinvalid','readonly') else ('warn' if msg == 'provwarn' else '') }}">{{ notes[msg] }}</div>
+<div class="banner {{ 'err' if msg in ('badcurrent','tooshort','mismatch','invalid','provinvalid','readonly','badtermcurrent','termtooshort','termmismatch') else ('warn' if msg == 'provwarn' else '') }}">{{ notes[msg] }}</div>
 {% endif %}
 
 <div class="panel">
@@ -169,5 +171,27 @@
     <button class="btn primary" type="submit" style="align-self:flex-start">Change password</button>
   </form>
   <p class="muted" style="font-size:12px;margin-top:8px">Your current session stays signed in after a change.</p>
+</div>
+
+<div class="panel">
+  <h2>Terminal password
+    <span class="pill" style="{{ 'color:#34D399;border-color:#1f5a4a' if terminal_password_set else '' }}">{{ 'SET' if terminal_password_set else 'NOT SET' }}</span>
+  </h2>
+  <p class="muted" style="font-size:12px;max-width:520px">
+    A separate password that gates the web terminal (full shell) on top of your
+    dashboard login. {% if not terminal_password_set %}None is set yet — set one here, or
+    you'll be prompted on the <a href="/terminal">Terminal</a> page on first use.{% else %}
+    Unlocking the terminal lasts about 30&nbsp;minutes, then re-locks.{% endif %}
+  </p>
+  <form method="post" action="/settings/terminal_password" style="display:flex;flex-direction:column;gap:10px;max-width:360px">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    {% if terminal_password_set %}
+    <input type="password" name="current" placeholder="current terminal password" autocomplete="off">
+    {% endif %}
+    <input type="password" name="new" placeholder="new terminal password (min 8 chars)" autocomplete="new-password">
+    <input type="password" name="confirm" placeholder="confirm terminal password" autocomplete="new-password">
+    <button class="btn primary" type="submit" style="align-self:flex-start">
+      {{ 'Change terminal password' if terminal_password_set else 'Set terminal password' }}</button>
+  </form>
 </div>
 {% endblock %}

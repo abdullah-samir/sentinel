@@ -39,6 +39,22 @@ def login(client):
                 follow_redirects=False)
 
 
+TERM_PW = "term-pass-9999"
+
+
+def _csrf(client, path="/terminal"):
+    r = client.get(path)
+    return re.search(r'name="csrf" value="([0-9a-f]+)"', r.text).group(1)
+
+
+def unlock_terminal(client, pw=TERM_PW):
+    """First-use setup: set the terminal password, which also unlocks (sets the
+    short-lived terminal cookie that the TestClient then carries)."""
+    csrf = _csrf(client, "/terminal")
+    client.post("/terminal/unlock", data={"new": pw, "confirm": pw, "csrf": csrf},
+                follow_redirects=False)
+
+
 # --- gating ---------------------------------------------------------------
 def test_terminal_requires_auth(tmp_path):
     _, _, app = make_env(tmp_path, shell_enabled=True)
@@ -85,14 +101,74 @@ def test_terminal_disabled_in_readonly(tmp_path):
             pass
 
 
-def test_terminal_enabled_renders_xterm(tmp_path):
+def test_terminal_enabled_prompts_to_set_password(tmp_path):
+    # Enabled + logged in, but no terminal password yet -> setup prompt, not xterm.
     _, _, app = make_env(tmp_path, shell_enabled=True)
     client = TestClient(app)
     login(client)
     r = client.get("/terminal")
     assert r.status_code == 200
-    assert "/static/vendor/xterm.js" in r.text
+    assert "/static/vendor/xterm.js" not in r.text
+    assert "set a terminal password" in r.text.lower()
     assert 'href="/terminal"' in r.text            # nav link shown when enabled
+
+
+def test_terminal_locked_without_unlock(tmp_path):
+    # Terminal password already set, but this session has not unlocked -> locked.
+    cfg, dc, app = make_env(tmp_path, shell_enabled=True)
+    dc.terminal_password_hash = hash_password(TERM_PW)
+    client = TestClient(app)
+    login(client)
+    r = client.get("/terminal")
+    assert r.status_code == 200
+    assert "/static/vendor/xterm.js" not in r.text
+    assert "terminal locked" in r.text.lower()
+    # WS refused while locked, even with a valid session
+    with pytest.raises(Exception):
+        with client.websocket_connect("/ws/terminal"):
+            pass
+
+
+def test_terminal_unlock_wrong_password_rejected(tmp_path):
+    cfg, dc, app = make_env(tmp_path, shell_enabled=True)
+    dc.terminal_password_hash = hash_password(TERM_PW)
+    client = TestClient(app)
+    login(client)
+    csrf = _csrf(client, "/terminal")
+    r = client.post("/terminal/unlock",
+                    data={"password": "wrong-password", "csrf": csrf},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/terminal?e=bad"
+    # still locked -> WS refused
+    with pytest.raises(Exception):
+        with client.websocket_connect("/ws/terminal"):
+            pass
+
+
+def test_terminal_setup_then_open_renders_xterm(tmp_path):
+    _, _, app = make_env(tmp_path, shell_enabled=True)
+    client = TestClient(app)
+    login(client)
+    unlock_terminal(client)                        # sets password + unlocks
+    r = client.get("/terminal")
+    assert r.status_code == 200
+    assert "/static/vendor/xterm.js" in r.text
+    assert "/terminal/lock" in r.text              # lock button present when open
+
+
+def test_terminal_lock_relocks(tmp_path):
+    _, _, app = make_env(tmp_path, shell_enabled=True)
+    client = TestClient(app)
+    login(client)
+    unlock_terminal(client)
+    assert "/static/vendor/xterm.js" in client.get("/terminal").text   # open
+    csrf = _csrf(client, "/terminal")
+    client.post("/terminal/lock", data={"csrf": csrf}, follow_redirects=False)
+    r = client.get("/terminal")
+    assert "terminal locked" in r.text.lower()     # back to locked after lock
+    with pytest.raises(Exception):
+        with client.websocket_connect("/ws/terminal"):
+            pass
 
 
 # --- functional PTY round-trip -------------------------------------------
@@ -101,6 +177,7 @@ def test_terminal_ws_echo_roundtrip(tmp_path):
     _, _, app = make_env(tmp_path, shell_enabled=True)
     client = TestClient(app)
     login(client)
+    unlock_terminal(client)                        # unlock before the WS handshake
     marker = "sentinel_marker_abc123"
     with client.websocket_connect("/ws/terminal") as ws:
         ws.send_text(json.dumps({"type": "resize", "cols": 100, "rows": 30}))

@@ -36,10 +36,18 @@ class DashConfig:
     # public tunnel. Enable with SENTINEL_DASH_SHELL=1 (env wins) or the stored
     # flag. It additionally refuses to operate in read-only mode.
     shell_enabled: bool = True
+    # Separate password gating the web terminal (RCE), independent of the login
+    # password. "" = not set yet (the terminal prompts to set one on first use).
+    # Scrypt hash, same scheme as the login password; never plaintext.
+    terminal_password_hash: str = ""
 
     @property
     def configured(self) -> bool:
         return bool(self.password_hash)
+
+    @property
+    def terminal_password_set(self) -> bool:
+        return bool(self.terminal_password_hash)
 
 
 def _read_file(path: Path) -> dict:
@@ -55,7 +63,8 @@ def save_dash_config(cfg: DashConfig) -> None:
     cfg.path.parent.mkdir(parents=True, exist_ok=True)
     data = {"user": cfg.user, "password_hash": cfg.password_hash,
             "secret": cfg.secret, "readonly": cfg.readonly,
-            "shell_enabled": cfg.shell_enabled}
+            "shell_enabled": cfg.shell_enabled,
+            "terminal_password_hash": cfg.terminal_password_hash}
     tmp = cfg.path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
     os.replace(tmp, cfg.path)
@@ -93,8 +102,11 @@ def load_dash_config(core_config: Optional[Config] = None) -> DashConfig:
     else:
         shell_enabled = bool(data.get("shell_enabled", False))
 
+    terminal_password_hash = data.get("terminal_password_hash", "") or ""
+
     cfg = DashConfig(user=user, password_hash=password_hash, secret=secret,
-                     readonly=readonly, path=path, shell_enabled=shell_enabled)
+                     readonly=readonly, path=path, shell_enabled=shell_enabled,
+                     terminal_password_hash=terminal_password_hash)
     # Only persist a newly-generated FILE secret (never persist an env secret).
     if persist and not env_secret:
         save_dash_config(cfg)
