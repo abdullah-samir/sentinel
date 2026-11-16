@@ -28,6 +28,7 @@
     <div class="brand">Sentinel<span class="dot">.</span></div>
     <div class="grow"></div>
     {% if nav_alerts %}<span class="muted" style="font-size:12px">{{ nav_alerts }} high+</span>{% endif %}
+    <button class="mtb-search" id="cmdkOpen" type="button" aria-label="Search and commands">{{ icon('search') }}</button>
   </div>
   <div class="nav-backdrop" id="navBackdrop"></div>
   {% endif %}
@@ -258,6 +259,155 @@
   ov.addEventListener("click", kill);
   document.addEventListener("keydown", kill, true);
   setTimeout(kill, 1800);
+})();
+</script>
+
+<!-- command palette (⌘K / Ctrl-K) -->
+<div class="cmdk" id="cmdk" hidden>
+  <div class="cmdk-scrim" data-cmdk-close></div>
+  <div class="cmdk-box" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="cmdk-input-row">
+      {{ icon('search') }}
+      <input id="cmdk-input" type="text" placeholder="Jump to a page or action…"
+             autocomplete="off" autocapitalize="off" spellcheck="false"
+             role="combobox" aria-expanded="true" aria-controls="cmdk-list" aria-autocomplete="list">
+    </div>
+    <ul class="cmdk-list" id="cmdk-list" role="listbox" aria-label="Results"></ul>
+    <div class="cmdk-hint muted">&uarr;&darr; move &middot; &crarr; open &middot; esc close</div>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  var pal = document.getElementById("cmdk");
+  var input = document.getElementById("cmdk-input");
+  var list = document.getElementById("cmdk-list");
+  if (!pal || !input || !list) return;
+  var openBtn = document.getElementById("cmdkOpen");
+  var lastFocus = null, active = 0, items = [];
+
+  /* Static index: the sidebar's own nav links (keeps shell/terminal in sync),
+     plus a couple of explicit actions. */
+  function buildIndex() {
+    var out = [], seen = {};
+    var links = document.querySelectorAll("#sidebar a[href]");
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i], href = a.getAttribute("href") || "";
+      var label = (a.textContent || "").trim();
+      if (!label || seen[href]) continue; seen[href] = 1;
+      out.push({ label: label, href: href, kind: "page",
+                 ext: a.target === "_blank" });
+    }
+    out.push({ label: "New scan", href: "/scan", kind: "action" });
+    out.push({ label: "Log out", kind: "logout" });
+    return out;
+  }
+  var INDEX = [];
+
+  function score(q, label) {
+    label = label.toLowerCase();
+    if (!q) return 1;
+    if (label.indexOf(q) === 0) return 100;
+    if (label.indexOf(q) !== -1) return 60;
+    // subsequence (fuzzy)
+    var li = 0;
+    for (var qi = 0; qi < q.length; qi++) {
+      li = label.indexOf(q[qi], li);
+      if (li === -1) return 0;
+      li++;
+    }
+    return 20;
+  }
+  function render() {
+    var q = input.value.trim().toLowerCase();
+    items = INDEX.map(function (it) { return { it: it, s: score(q, it.label) }; })
+                 .filter(function (r) { return r.s > 0; })
+                 .sort(function (a, b) { return b.s - a.s; })
+                 .map(function (r) { return r.it; });
+    list.innerHTML = "";
+    if (!items.length) {
+      var e = document.createElement("li"); e.className = "cmdk-empty";
+      e.textContent = "No matches"; list.appendChild(e); return;
+    }
+    if (active >= items.length) active = 0;
+    items.forEach(function (it, i) {
+      var li = document.createElement("li");
+      li.className = "cmdk-opt" + (i === active ? " active" : "");
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", i === active ? "true" : "false");
+      var t = document.createElement("span"); t.textContent = it.label; li.appendChild(t);
+      var k = document.createElement("span"); k.className = "cmdk-kind";
+      k.textContent = it.kind === "logout" ? "action" : it.kind; li.appendChild(k);
+      li.addEventListener("mousemove", function () { active = i; paintActive(); });
+      li.addEventListener("click", function () { activate(it); });
+      list.appendChild(li);
+    });
+  }
+  function paintActive() {
+    var opts = list.querySelectorAll(".cmdk-opt");
+    for (var i = 0; i < opts.length; i++) {
+      var on = i === active;
+      opts[i].classList.toggle("active", on);
+      opts[i].setAttribute("aria-selected", on ? "true" : "false");
+      if (on && opts[i].scrollIntoView) opts[i].scrollIntoView({ block: "nearest" });
+    }
+  }
+  function activate(it) {
+    if (!it) return;
+    if (it.kind === "logout") {
+      close();
+      var f = document.querySelector('form[action="/logout"]');
+      if (f) f.submit(); else location.href = "/";
+      return;
+    }
+    close();
+    if (it.ext) window.open(it.href, "_blank", "noopener"); else location.href = it.href;
+  }
+  function open() {
+    if (!pal.hidden) return;
+    INDEX = buildIndex(); active = 0; input.value = "";
+    lastFocus = document.activeElement;
+    pal.hidden = false; render();
+    try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+  }
+  function close() {
+    if (pal.hidden) return;
+    pal.hidden = true;
+    if (lastFocus && lastFocus.focus) { try { lastFocus.focus({ preventScroll: true }); } catch (e) {} }
+  }
+
+  input.addEventListener("input", function () { active = 0; render(); });
+  pal.addEventListener("click", function (e) { if (e.target.hasAttribute("data-cmdk-close")) close(); });
+  if (openBtn) openBtn.addEventListener("click", open);
+
+  pal.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); if (items.length) { active = (active + 1) % items.length; paintActive(); } }
+    else if (e.key === "ArrowUp") { e.preventDefault(); if (items.length) { active = (active - 1 + items.length) % items.length; paintActive(); } }
+    else if (e.key === "Enter") { e.preventDefault(); activate(items[active]); }
+    else if (e.key === "Tab") { e.preventDefault(); }   // focus trap: keep focus in the input
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+      e.preventDefault();
+      if (pal.hidden) open(); else close();
+    }
+  });
+})();
+</script>
+
+<script>
+/* Service worker: caches ONLY /static/* (its own scope). HTML, /login,
+   /logout, SSE and APIs are all outside /static/ so they are never cached —
+   always live. Degrades to normal network if unsupported. */
+(function () {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/static/sw.js").catch(function () {});
+    });
+  } catch (e) {}
 })();
 </script>
 {% endif %}

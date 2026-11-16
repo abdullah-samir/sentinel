@@ -49,6 +49,100 @@
       <span class="gbadge" style="background:{{ grade_color.get(stat_cards.worst_grade, '#8B98AB') }}">{{ stat_cards.worst_grade }}</span></div>
     <div class="l">Latest / worst grade</div></div>
 </div>
+
+{% if rows %}
+<div class="panel">
+  <h2>Findings overview</h2>
+  <div class="ov-charts">
+    <div class="donut-wrap">
+      <svg class="donut" id="ov-donut" viewBox="0 0 132 132" role="img" aria-label="Findings by severity"></svg>
+      <ul class="donut-legend" id="ov-legend"></ul>
+    </div>
+    <div class="spark-wrap">
+      <div class="muted" style="font-size:12px;margin-bottom:6px">Findings per run (oldest &rarr; newest)</div>
+      <svg class="spark" id="ov-spark" viewBox="0 0 100 32" preserveAspectRatio="none"
+           role="img" aria-label="Findings per run over time"></svg>
+      <div class="muted" id="ov-spark-cap" style="font-size:11px;margin-top:4px"></div>
+    </div>
+  </div>
+</div>
+<script type="application/json" id="ov-data">{"sev": {{ stat_cards.by_severity | tojson }},
+ "colors": { {% for s in sev_order %}"{{ s }}": "{{ sev_color[s] }}"{{ "," if not loop.last }}{% endfor %} },
+ "order": [{% for s in sev_order %}"{{ s }}"{{ "," if not loop.last }}{% endfor %}],
+ "series": [{% for r in rows|sort(attribute='started_at') %}{{ r.findings_total }}{{ "," if not loop.last }}{% endfor %}]}</script>
+<script>
+(function(){
+  "use strict";
+  var el=document.getElementById("ov-data"); if(!el) return;
+  var D; try{ D=JSON.parse(el.textContent); }catch(e){ return; }
+  var NS="http://www.w3.org/2000/svg";
+  function mk(tag,attrs){ var n=document.createElementNS(NS,tag);
+    for(var k in attrs){ n.setAttribute(k,attrs[k]); } return n; }
+
+  /* ---- severity donut ---- */
+  var donut=document.getElementById("ov-donut"), legend=document.getElementById("ov-legend");
+  var order=D.order||[], sev=D.sev||{}, colors=D.colors||{};
+  var total=0; order.forEach(function(s){ total+=(+sev[s]||0); });
+  var cx=66, cy=66, r=52, C=2*Math.PI*r;
+  donut.appendChild(mk("circle",{cx:cx,cy:cy,r:r,fill:"none",stroke:"var(--surface-3)","stroke-width":14}));
+  if(total>0){
+    var acc=0;
+    order.forEach(function(s){
+      var v=+sev[s]||0; if(!v) return;
+      var f=v/total;
+      var seg=mk("circle",{cx:cx,cy:cy,r:r,fill:"none",stroke:(colors[s]||"#8B98AB"),
+        "stroke-width":14,"stroke-dasharray":(f*C).toFixed(2)+" "+C.toFixed(2),
+        "stroke-dashoffset":(-acc*C).toFixed(2)});
+      seg.setAttribute("class","donut-seg");
+      donut.appendChild(seg);
+      acc+=f;
+    });
+  }
+  var ct=mk("text",{x:cx,y:cy-2,"text-anchor":"middle","dominant-baseline":"middle",
+    fill:"var(--ink)","font-size":"26","font-weight":"700",transform:"rotate(90 "+cx+" "+cy+")"});
+  ct.setAttribute("class","donut-center"); ct.textContent=String(total);
+  donut.appendChild(ct);
+  var cl=mk("text",{x:cx,y:cy+16,"text-anchor":"middle","dominant-baseline":"middle",
+    fill:"var(--muted)","font-size":"9",transform:"rotate(90 "+cx+" "+cy+")"});
+  cl.textContent="findings"; donut.appendChild(cl);
+  order.forEach(function(s){
+    var v=+sev[s]||0;
+    var li=document.createElement("li");
+    var sw=document.createElement("span"); sw.className="lg-sw"; sw.style.background=colors[s]||"#8B98AB";
+    var nm=document.createElement("span"); nm.textContent=s;
+    var n=document.createElement("span"); n.className="lg-n"; n.textContent=v;
+    li.appendChild(sw); li.appendChild(nm); li.appendChild(n); legend.appendChild(li);
+  });
+
+  /* ---- findings-over-time sparkline ---- */
+  var spark=document.getElementById("ov-spark"), cap=document.getElementById("ov-spark-cap");
+  var ser=(D.series||[]).map(function(x){ return +x||0; });
+  var W=100, H=32, pad=3;
+  if(ser.length>=2){
+    var max=Math.max.apply(null,ser), min=0, span=(max-min)||1;
+    var dx=(W-2*pad)/(ser.length-1);
+    var pts=ser.map(function(v,i){
+      var x=pad+i*dx, y=H-pad-((v-min)/span)*(H-2*pad);
+      return [x,y];
+    });
+    var defs=mk("defs",{});
+    var grad=mk("linearGradient",{id:"sparkFill",x1:"0",y1:"0",x2:"0",y2:"1"});
+    grad.appendChild(mk("stop",{offset:"0%","stop-color":"var(--cyan)","stop-opacity":".35"}));
+    grad.appendChild(mk("stop",{offset:"100%","stop-color":"var(--cyan)","stop-opacity":"0"}));
+    defs.appendChild(grad); spark.appendChild(defs);
+    var dLine=pts.map(function(p,i){ return (i?"L":"M")+p[0].toFixed(2)+" "+p[1].toFixed(2); }).join(" ");
+    var dArea=dLine+" L"+(W-pad).toFixed(2)+" "+(H-pad)+" L"+pad+" "+(H-pad)+" Z";
+    spark.appendChild(mk("path",{d:dArea,"class":"spark-area"}));
+    spark.appendChild(mk("path",{d:dLine,"class":"spark-line"}));
+    var last=pts[pts.length-1];
+    spark.appendChild(mk("circle",{cx:last[0].toFixed(2),cy:last[1].toFixed(2),r:"2.2","class":"spark-dot"}));
+    if(cap) cap.textContent=ser.length+" runs · peak "+max+" findings";
+  } else {
+    if(cap) cap.textContent = ser.length ? "Only one run so far — more will chart a trend." : "";
+  }
+})();
+</script>
+{% endif %}
 {% endif %}
 
 <div class="panel">

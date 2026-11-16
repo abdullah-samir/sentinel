@@ -25,6 +25,7 @@
   <div class="statrow">
     <span id="spinner" class="spin"></span>
     <strong id="status">running</strong>
+    <span id="conn" class="conn-pill is-connecting" role="status"><span class="cdot"></span>connecting</span>
     <span class="muted mono">{{ run_id }}</span>
     <span class="spacer" style="margin-left:auto"></span>
     <a id="reportlink" class="btn primary" href="/run/{{ run_id }}">View report &rarr;</a>
@@ -69,6 +70,11 @@
   var seen = {}, es = null;
 
   function setText(id,t){ var e=document.getElementById(id); if(e) e.textContent=t; }
+  function setConn(state,label){
+    var p=document.getElementById('conn'); if(!p) return;
+    p.className='conn-pill is-'+state;
+    p.innerHTML='<span class="cdot"></span>'; p.appendChild(document.createTextNode(label));
+  }
   function fmtDur(s){ s=Math.max(0,Math.floor(s)); var m=Math.floor(s/60);
     return m ? (m+"m "+(s%60)+"s") : (s+"s"); }
 
@@ -97,6 +103,7 @@
     setText('status','complete');
     var link=document.getElementById('reportlink'); if(link) link.style.display='inline-block';
     if(es){ es.close(); es=null; }
+    setConn('idle','closed');
   }
   function applySnapshot(s){
     if(!s) return;
@@ -115,8 +122,11 @@
     if(s.done) finish();
   }
   function connect(){
-    if(!window.EventSource){ document.getElementById('nojs').style.display='block'; return; }
+    if(!window.EventSource){ document.getElementById('nojs').style.display='block'; setConn('idle','no live'); return; }
+    setConn('connecting','connecting');
     es=new EventSource('/events/'+encodeURIComponent(RUN_ID));
+    es.addEventListener('open', function(){ setConn('connected','live'); });
+    es.addEventListener('error', function(){ setConn(es && es.readyState===2 ? 'idle' : 'reconnecting', es && es.readyState===2 ? 'offline' : 'reconnecting'); });
     ['snapshot','tick'].forEach(function(t){
       es.addEventListener(t,function(ev){ try{ applySnapshot(JSON.parse(ev.data)); }catch(e){} }); });
     ['run.start','step.start','step.done','step.skip','step.refuse','run.done','log'].forEach(function(t){

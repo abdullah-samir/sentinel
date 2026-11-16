@@ -108,7 +108,8 @@
 <!-- SERIAL LOG (moved above the spectrum) ------------------------------- -->
 <div class="panel">
   <div class="esp-log-head">
-    <h2>Serial log <span class="muted esp-log-hint">(human-readable · click a line for raw JSON · heartbeats shown in “Live” above)</span></h2>
+    <h2>Serial log <span id="esp-conn" class="conn-pill is-idle" role="status"><span class="cdot"></span>idle</span>
+      <span class="muted esp-log-hint">(human-readable · click a line for raw JSON · heartbeats shown in “Live” above)</span></h2>
     <div class="esp-log-tools">
       <button id="esp-log-pause" class="btn sm" type="button">Autoscroll: on</button>
       <button id="esp-log-jump" class="btn sm" type="button" style="display:none">new ↓</button>
@@ -905,9 +906,18 @@
   try{ applySnapshot(JSON.parse(($("esp-seed")||{}).textContent || "null")); }catch(e){}
 
   var es=null;
+  function setConn(state,label){
+    var p=$("esp-conn"); if(!p) return;
+    p.className="conn-pill is-"+state;
+    p.innerHTML='<span class="cdot"></span>'; p.appendChild(document.createTextNode(label));
+  }
   function connectStream(){
-    if(es || !ENABLED || !window.EventSource) return;
+    if(es || !window.EventSource) return;
+    if(!ENABLED){ setConn("idle","bridge off"); return; }
+    setConn("connecting","connecting");
     es=new EventSource("/esp/stream");
+    es.addEventListener("open", function(){ setConn("connected","live"); });
+    es.addEventListener("error", function(){ setConn(es && es.readyState===2 ? "idle" : "reconnecting", es && es.readyState===2 ? "offline" : "reconnecting"); });
     es.addEventListener("snapshot", function(ev){ try{ applySnapshot(JSON.parse(ev.data)); }catch(e){} });
     es.addEventListener("line", function(ev){ try{ logFrame(JSON.parse(ev.data), null); }catch(e){} });
     es.addEventListener("frame", function(ev){ try{ var f=JSON.parse(ev.data);
@@ -916,7 +926,7 @@
              logFrame(f.text, f.obj); } }catch(e){} }); // log: reducer decides new/×N/skip
     es.addEventListener("tick", function(ev){ try{ setFresh(!!JSON.parse(ev.data).alive && lastHbAt>0); }catch(e){} });
   }
-  function closeStream(){ if(es){ es.close(); es=null; } }
+  function closeStream(){ if(es){ es.close(); es=null; } setConn("idle","idle"); }
 
   // Init on BOTH initial load and bf-cache restore (pageshow) so returning from
   // "recorded runs" via the back button resumes the stream with no refresh;
