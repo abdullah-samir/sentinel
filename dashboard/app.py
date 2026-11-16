@@ -140,8 +140,18 @@ def create_app(core_config: Optional[Config] = None,
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES)),
                       autoescape=select_autoescape(["html", "xml"]),
                       trim_blocks=True, lstrip_blocks=True)
+    def _asset_v() -> str:
+        """Cache-bust token for /static CSS — the file's mtime. A CSS edit changes
+        the token, so the <link> URL changes and any cached copy (browser or an
+        older service worker) is bypassed on the next load."""
+        try:
+            return str(int((Path(__file__).parent / "static" / "css" / "sentinel.css").stat().st_mtime))
+        except Exception:  # noqa: BLE001
+            return _version()
+
     env.globals.update(sev_order=SEV_ORDER, sev_color=SEV_COLOR, grade_color=GRADE_COLOR,
-                       version=_version(), shell_enabled=dash_config.shell_enabled)
+                       version=_version(), shell_enabled=dash_config.shell_enabled,
+                       asset_v=_asset_v())
 
     @asynccontextmanager
     async def _lifespan(app):                 # fires under uvicorn / `with TestClient`
