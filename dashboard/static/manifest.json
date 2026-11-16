@@ -1,0 +1,17 @@
+{
+  "name": "Sentinel",
+  "short_name": "Sentinel",
+  "description": "Sentinel — portable network-security assessment console.",
+  "start_url": "/",
+  "scope": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0A0E16",
+  "theme_color": "#0A0E16",
+  "icons": [
+    { "src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" },
+    { "src": "/static/favicon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}
