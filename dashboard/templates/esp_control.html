@@ -114,6 +114,7 @@
       <button id="esp-log-jump" class="btn sm" type="button" style="display:none">new ↓</button>
       <button id="esp-log-clear" class="btn sm" type="button">Clear log</button>
       <label class="esp-pretty-toggle"><input id="esp-pretty-chk" type="checkbox"> raw JSON</label>
+      <label class="esp-pretty-toggle" title="Log every frame incl. repeated telemetry (debug)"><input id="esp-verbose-chk" type="checkbox"> verbose</label>
     </div>
   </div>
   <div id="esp-log" class="esp-log mono" aria-live="polite"></div>
@@ -285,6 +286,7 @@
   .esp-log .ln{color:var(--ink-dim);padding:1px 0}
   .esp-log .ln.has-raw{cursor:pointer}
   .esp-log .ln.has-raw:hover{color:var(--ink)}
+  .esp-log .ln-count{color:#7E8CA3;font-weight:700;font-size:11px}
   .esp-log .ln.ok{color:#8FD16B}
   .esp-log .ln.err{color:var(--sev-high)}
   .esp-log .ln.alert{color:var(--sev-critical);font-weight:600}
@@ -377,10 +379,19 @@
     });
   }
 
-  // ---- serial log (textContent only; raw⇄pretty toggle per line) ----------
+  // ---- serial log: EVENTS scroll, TELEMETRY updates widgets in place --------
+  // Mirrors the Python log_class/LogReducer: telemetry (status/config/scan/…) hits the
+  // log only on a meaningful change vs the last logged same-kind line; consecutive
+  // identical lines coalesce dmesg-style (×N); verbose logs every frame. Rendering is
+  // batched to one DOM flush per ~180 ms so a burst can't thrash. textContent only.
   var logEl=$("esp-log"), MAXLOG=500;
   var autoscroll = LS.get("esp.autoscroll","1")!=="0";
   var prettyDefault = LS.get("esp.pretty","0")==="1";
+  var verboseLog = LS.get("esp.verbose","0")==="1";
+  var TELEMETRY = {heartbeat:1,status_result:1,config_result:1,scan_result:1,
+                   search_result:1,diag_result:1};
+  function logClass(obj){
+    return (obj && typeof obj==="object" && TELEMETRY[obj.t]) ? "telemetry" : "event"; }
   function classify(obj, raw){
     if(obj){
       if(obj.t==="detection") return "alert";
@@ -396,25 +407,58 @@
   function scrollLogBottom(){ if(logEl) logEl.scrollTop=logEl.scrollHeight; }
   function showJump(){ var j=$("esp-log-jump"); if(j) j.style.display=""; }
   function hideJump(){ var j=$("esp-log-jump"); if(j) j.style.display="none"; }
-  function addLogEntry(text, obj){
-    if(!logEl) return;
+
+  function makeRow(text, obj){
     var div=document.createElement("div");
     var cls=classify(obj, obj?null:text);
     div.className="ln"+(cls?(" "+cls):"")+(obj?" has-raw":"");
+    var tx=document.createElement("span"); tx.className="ln-text";
+    var badge=document.createElement("span"); badge.className="ln-count"; badge.style.display="none";
+    div._count=1; div._badge=badge;
     if(obj){
       div._human=text; div._pretty=prettyDefault; div.title="click to toggle raw JSON";
-      div.textContent = div._pretty ? JSON.stringify(obj) : text;
+      tx.textContent = div._pretty ? JSON.stringify(obj) : text;
       div.addEventListener("click", function(){
         div._pretty=!div._pretty;
-        div.textContent = div._pretty ? JSON.stringify(obj) : div._human;
+        tx.textContent = div._pretty ? JSON.stringify(obj) : div._human;
       });
-    } else {
-      div.textContent=text;
-    }
-    logEl.appendChild(div);
+    } else { tx.textContent = text; }
+    div.appendChild(tx); div.appendChild(badge);
+    return div;
+  }
+  function bumpRow(div){
+    div._count=(div._count||1)+1;
+    if(div._badge){ div._badge.textContent=" ×"+div._count; div._badge.style.display=""; }
+  }
+
+  // reducer state (mirror of Python LogReducer) + throttled flush
+  var prevRowText=null, lastByKind={}, lastRowEl=null, pendingRows=[], flushTimer=null;
+  function scheduleFlush(){ if(!flushTimer) flushTimer=setTimeout(flushLog, 180); }
+  function flushLog(){
+    flushTimer=null;
+    if(!logEl || !pendingRows.length) return;
+    var frag=document.createDocumentFragment();
+    pendingRows.forEach(function(el){ frag.appendChild(el); });
+    pendingRows=[];
+    logEl.appendChild(frag);
     while(logEl.childNodes.length>MAXLOG) logEl.removeChild(logEl.firstChild);
     if(autoscroll) scrollLogBottom(); else showJump();
   }
+  function logFrame(text, obj){
+    if(!logEl) return;
+    var kind = (obj && typeof obj==="object") ? obj.t : null;
+    if(!verboseLog){
+      if(logClass(obj)==="telemetry" && lastByKind[kind]===text) return;   // skip repeat
+      if(lastRowEl && prevRowText===text){ bumpRow(lastRowEl);             // coalesce ×N
+        if(kind) lastByKind[kind]=text; return; }
+    }
+    var el=makeRow(text,obj); pendingRows.push(el); lastRowEl=el;
+    prevRowText=text; if(kind) lastByKind[kind]=text;
+    scheduleFlush();
+  }
+  function clearLog(){ if(logEl) logEl.innerHTML="";
+    pendingRows=[]; lastRowEl=null; prevRowText=null; lastByKind={}; hideJump(); }
+
   // log tools
   function setAutoscroll(on){
     autoscroll=on; LS.set("esp.autoscroll", on?"1":"0");
@@ -424,11 +468,13 @@
   (function initLogTools(){
     var pause=$("esp-log-pause"); if(pause) pause.addEventListener("click", function(){ setAutoscroll(!autoscroll); });
     var jump=$("esp-log-jump"); if(jump) jump.addEventListener("click", function(){ hideJump(); scrollLogBottom(); });
-    var clear=$("esp-log-clear"); if(clear) clear.addEventListener("click", function(){
-      if(logEl) logEl.innerHTML=""; hideJump(); });
+    var clear=$("esp-log-clear"); if(clear) clear.addEventListener("click", clearLog);
     var chk=$("esp-pretty-chk");
     if(chk){ chk.checked=prettyDefault;
       chk.addEventListener("change", function(){ prettyDefault=chk.checked; LS.set("esp.pretty", prettyDefault?"1":"0"); }); }
+    var vb=$("esp-verbose-chk");
+    if(vb){ vb.checked=verboseLog;
+      vb.addEventListener("change", function(){ verboseLog=vb.checked; LS.set("esp.verbose", verboseLog?"1":"0"); }); }
     setAutoscroll(autoscroll);
   })();
 
@@ -828,11 +874,14 @@
   }
   function applySnapshot(s){
     if(!s) return;
-    // reconnect-safe: only paint the snapshot log into an EMPTY pane (first connect)
+    // reconnect-safe: only paint the snapshot log into an EMPTY pane (first connect).
+    // Feed the backlog through the same reducer so repeated telemetry is coalesced.
     if(logEl && logEl.childNodes.length===0){
+      prevRowText=null; lastByKind={}; lastRowEl=null;
       (s.logs||[]).forEach(function(e){
-        if(e && typeof e==="object"){ addLogEntry(e.text!=null?e.text:"", e.obj); }
-        else { addLogEntry(String(e), null); } });
+        if(e && typeof e==="object"){ logFrame(e.text!=null?e.text:"", e.obj); }
+        else { logFrame(String(e), null); } });
+      flushLog();
     }
     if(s.panel){ for(var k in s.panel){ if(s.panel.hasOwnProperty(k)) panel[k]=s.panel[k]; }
       if(panel.run_state==="running") runApprox=true;   // seeded already-running: approximate
@@ -856,10 +905,11 @@
     if(es || !ENABLED || !window.EventSource) return;
     es=new EventSource("/esp/stream");
     es.addEventListener("snapshot", function(ev){ try{ applySnapshot(JSON.parse(ev.data)); }catch(e){} });
-    es.addEventListener("line", function(ev){ try{ addLogEntry(JSON.parse(ev.data), null); }catch(e){} });
+    es.addEventListener("line", function(ev){ try{ logFrame(JSON.parse(ev.data), null); }catch(e){} });
     es.addEventListener("frame", function(ev){ try{ var f=JSON.parse(ev.data);
       if(f.heartbeat){ onHeartbeat(f.obj); }          // heartbeat -> widget, NOT the log
-      else { addLogEntry(f.text, f.obj); onFrame(f.obj); } }catch(e){} });
+      else { onFrame(f.obj);                           // widgets update IN PLACE always
+             logFrame(f.text, f.obj); } }catch(e){} }); // log: reducer decides new/×N/skip
     es.addEventListener("tick", function(ev){ try{ setFresh(!!JSON.parse(ev.data).alive && lastHbAt>0); }catch(e){} });
   }
   function closeStream(){ if(es){ es.close(); es=null; } }

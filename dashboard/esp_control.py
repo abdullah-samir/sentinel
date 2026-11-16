@@ -234,6 +234,72 @@ def humanize_frame(obj: Any) -> str:
     return json.dumps(obj, separators=(",", ":"))   # unknown/missing t -> compact JSON
 
 
+# Frame kinds that arrive as continuous TELEMETRY (high rate): they drive the live
+# widgets in place and reach the scrolling log ONLY on a meaningful change (a new
+# humanized line vs the last logged line of the same kind). Everything else — ack/nak/
+# cmd_error, ctrl_result (start/stop/join completions), detections, boot/info/error,
+# help/selftest, and ANY UNKNOWN frame — is a discrete EVENT that always logs (subject
+# to identical-line coalescing). heartbeat is telemetry too, but it never reaches the
+# log at all (routed to the Live widget upstream).
+TELEMETRY_TYPES = frozenset({
+    "heartbeat", "status_result", "config_result", "scan_result",
+    "search_result", "diag_result",
+})
+
+
+def log_class(obj) -> str:
+    """Classify a frame for the scrolling log: 'telemetry' (continuous; log only on a
+    meaningful change) or 'event' (discrete; always log). A non-dict, a missing `t`, or
+    any UNKNOWN `t` is an EVENT — so new/unknown command output is never hidden (E4
+    extensibility). Pure; mirrored by the page JS."""
+    if not isinstance(obj, dict):
+        return "event"
+    return "telemetry" if obj.get("t") in TELEMETRY_TYPES else "event"
+
+
+class LogReducer:
+    """Decide, per incoming frame, whether it becomes a NEW log row, COALESCES into the
+    previous identical row (dmesg-style ×N), or is SKIPPED (a telemetry repeat). Pure
+    and deterministic so it is unit-tested here and mirrored verbatim in the page JS.
+
+    feed(obj, text) -> 'new_row' | 'increment' | 'skip'. ``text`` defaults to
+    humanize_frame(obj) (the humanizer's text is never changed by this).
+
+    verbose=True disables both the telemetry-skip and the coalescing, so EVERY frame
+    logs — the debugging escape hatch (nothing is ever permanently hidden)."""
+
+    def __init__(self, verbose: bool = False):
+        self.verbose = verbose
+        self.rows: list[dict] = []          # [{text, count, obj}] — for tests/mirror
+        self._prev_row_text = None
+        self._last_by_kind: dict = {}
+
+    def feed(self, obj, text: Optional[str] = None) -> str:
+        if text is None:
+            text = humanize_frame(obj)
+        kind = obj.get("t") if isinstance(obj, dict) else None
+        if self.verbose:
+            return self._append(text, kind, obj)
+        # telemetry repeat vs the last LOGGED line of the same kind -> skip (no row)
+        if log_class(obj) == "telemetry" and self._last_by_kind.get(kind) == text:
+            return "skip"
+        # coalesce consecutive identical lines (any kind) -> ×N on the previous row
+        if self.rows and self._prev_row_text == text:
+            self.rows[-1]["count"] += 1
+            if kind is not None:
+                self._last_by_kind[kind] = text
+            return "increment"
+        return self._append(text, kind, obj)
+
+    def _append(self, text, kind, obj) -> str:
+        self.rows.append({"text": text, "count": 1,
+                          "obj": obj if isinstance(obj, dict) else None})
+        self._prev_row_text = text
+        if kind is not None:
+            self._last_by_kind[kind] = text
+        return "new_row"
+
+
 def snapshot_log(bridge) -> list[dict]:
     """Rebuild the initial log the SAME way the live stream renders frames: humanize
     known frames, compact-JSON unknowns, pass non-JSON through; DROP heartbeats.

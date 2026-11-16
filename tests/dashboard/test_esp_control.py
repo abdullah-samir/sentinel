@@ -187,6 +187,58 @@ def test_humanize_unknown_t_and_non_dict():
     assert espc.humanize_frame("[I] already human line") == "[I] already human line"
 
 
+# --- log_class + LogReducer (unit): events vs telemetry (section B) --------
+def test_log_class_telemetry_vs_event():
+    assert espc.log_class({"t": "status_result"}) == "telemetry"
+    assert espc.log_class({"t": "config_result"}) == "telemetry"
+    assert espc.log_class({"t": "scan_result"}) == "telemetry"
+    assert espc.log_class({"t": "heartbeat"}) == "telemetry"
+    # discrete events + anything unknown/non-dict are EVENTS (always logged)
+    assert espc.log_class({"t": "ack"}) == "event"
+    assert espc.log_class({"t": "ctrl_result"}) == "event"
+    assert espc.log_class({"t": "detection"}) == "event"
+    assert espc.log_class({"t": "zzz_new_cmd"}) == "event"      # unknown -> event
+    assert espc.log_class({"no_t": 1}) == "event"
+    assert espc.log_class("plain line") == "event"
+
+
+def test_reducer_telemetry_repeat_skips_but_change_logs():
+    r = espc.LogReducer()
+    standby = _fixture("status_result_sample.json")
+    running = _fixture("status_result_running_sample.json")
+    assert r.feed(standby) == "new_row"          # first of its kind -> row
+    assert r.feed(standby) == "skip"             # identical telemetry repeat -> no row
+    assert r.feed(standby) == "skip"
+    assert r.feed(running) == "new_row"          # state transition -> new row
+    assert r.feed(running) == "skip"             # settles again
+    assert len(r.rows) == 2
+
+
+def test_reducer_unknown_frame_always_new_row():
+    r = espc.LogReducer()
+    assert r.feed({"t": "zzz_new_cmd", "x": 1}) == "new_row"
+    assert r.feed({"t": "zzz_other", "y": 2}) == "new_row"
+    assert len(r.rows) == 2
+
+
+def test_reducer_coalesces_consecutive_identical_lines():
+    r = espc.LogReducer()
+    det = _fixture("detection_sample.json")
+    assert r.feed(det) == "new_row"
+    assert r.feed(det) == "increment"            # identical consecutive -> ×N, no new row
+    assert r.feed(det) == "increment"
+    assert len(r.rows) == 1 and r.rows[0]["count"] == 3
+
+
+def test_reducer_verbose_logs_every_frame():
+    r = espc.LogReducer(verbose=True)
+    standby = _fixture("status_result_sample.json")
+    assert r.feed(standby) == "new_row"
+    assert r.feed(standby) == "new_row"          # no skip, no coalesce in verbose
+    assert r.feed(standby) == "new_row"
+    assert len(r.rows) == 3
+
+
 # --- snapshot_log (unit) --------------------------------------------------
 def test_snapshot_log_humanizes_drops_heartbeat_keeps_obj():
     class B:
