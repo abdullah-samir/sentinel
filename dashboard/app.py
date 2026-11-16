@@ -24,9 +24,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import (
-    FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse,
+    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse,
+    StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import escape
 
@@ -1169,6 +1171,43 @@ def create_app(core_config: Optional[Config] = None,
         if not current_user(request):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         return JSONResponse(interfaces_mod.interfaces_panel(core_config, iface_registry))
+
+    # --- themed error pages (HTML navigations only; API/XHR stay machine-readable) ---
+    def _wants_html(request: Request) -> bool:
+        path = request.url.path
+        if path.startswith(("/api", "/events", "/esp/stream", "/static")):
+            return False
+        return "text/html" in request.headers.get("accept", "")
+
+    def error_page(request: Request, code: int, heading: str, message: str) -> HTMLResponse:
+        user = current_user(request)
+        html = env.get_template("error.html").render(
+            code=code, heading=heading, message=message, user=user,
+            readonly=dash_config.readonly, nav_alerts=_nav_alerts() if user else 0,
+            active=run_state.current(),
+            csrf_token=request.cookies.get(CSRF_COOKIE) or new_csrf_token())
+        return HTMLResponse(html, status_code=code)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_exc_handler(request: Request, exc: StarletteHTTPException):
+        if exc.status_code == 404 and _wants_html(request):
+            return error_page(request, 404, "Signal lost",
+                              "That page isn't on the grid — it may have moved, or never "
+                              "existed. Head back to the overview to pick up the trail.")
+        # Preserve default (non-HTML) behaviour for every other case.
+        return PlainTextResponse(exc.detail or "", status_code=exc.status_code,
+                                 headers=getattr(exc, "headers", None))
+
+    @app.exception_handler(Exception)
+    async def _server_err_handler(request: Request, exc: Exception):
+        # Best-effort themed 500 for browser navigations; API/XHR get plain text.
+        # (Under TestClient with raise_server_exceptions the exception still propagates.)
+        log.exception("unhandled error serving %s", request.url.path)
+        if _wants_html(request):
+            return error_page(request, 500, "Sensor fault",
+                              "Something broke on our side while scanning that request. "
+                              "The error was logged; try again from the overview.")
+        return PlainTextResponse("Internal Server Error", status_code=500)
 
     return app
 

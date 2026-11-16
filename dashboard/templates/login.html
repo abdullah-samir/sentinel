@@ -1,19 +1,47 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Sign in{% endblock %}
 {% block nav %}{% endblock %}
 {% block content %}
-<div class="panel" style="max-width:380px;margin:48px auto">
-  <h1 style="text-align:center">Sentinel<span style="color:var(--teal)">.</span> — sign in</h1>
-  {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
-  <form method="post" action="/login">
-    <input type="hidden" name="csrf" value="{{ csrf_token }}">
-    <label class="muted" style="font-size:13px">Username</label>
-    <input name="username" autocomplete="username" autofocus style="width:100%;margin:4px 0 12px">
-    <label class="muted" style="font-size:13px">Password</label>
-    <input name="password" type="password" autocomplete="current-password" style="width:100%;margin:4px 0 16px">
-    <button class="btn primary" type="submit" style="width:100%">Sign in</button>
-  </form>
-  <p class="muted" style="font-size:12px;margin-top:14px;text-align:center">
-    Authorized use only. Lab environment.</p>
+<div class="login-screen">
+  <!-- login-scoped ambient radar background (behind the card; never leaks to the dashboard) -->
+  <div class="login-bg" aria-hidden="true">
+    <div class="login-grid"></div>
+    <div class="login-rings"></div>
+    <div class="login-sweep"></div>
+  </div>
+
+  <div class="login-card panel">
+    <div class="login-brand brand">
+      <span class="login-radar" aria-hidden="true">{{ icon('radar', 'ic-lg') }}</span>
+      <span class="login-word">Sentinel<span class="dot">.</span></span>
+    </div>
+    <p class="login-sub muted">Network-security assessment console</p>
+
+    {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
+
+    <form method="post" action="/login" id="loginForm">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label class="muted login-lbl">Username</label>
+      <input name="username" autocomplete="username" autofocus>
+      <label class="muted login-lbl">Password</label>
+      <input name="password" type="password" autocomplete="current-password">
+      <button class="btn primary" type="submit">{{ icon('shield') }} Sign in</button>
+    </form>
+
+    <p class="login-foot muted">Authorized use only · isolated lab environment</p>
+  </div>
 </div>
+<script>
+/* Arm the one-shot post-login intro: a fresh flag that the dashboard reads
+   on its next load. Harmless on failed login (expires in 60s, cleared after
+   it plays). Never blocks the form. */
+(function () {
+  var f = document.getElementById("loginForm");
+  if (!f) return;
+  f.addEventListener("submit", function () {
+    try { localStorage.setItem("sentinel_intro", String(Date.now())); } catch (e) {}
+  });
+})();
+</script>
 {% endblock %}

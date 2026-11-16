@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Assets{% endblock %}
 {% block content %}
 <h1>Assets ({{ hosts|length }})</h1>
@@ -30,7 +31,12 @@
   </table>
   </div>
   {% else %}
-  <div class="empty">No hosts discovered yet. Run a recon scan to populate this.</div>
+  <div class="empty-state">
+    <div class="es-ico">{{ icon('server', 'ic-lg') }}</div>
+    <h3>No hosts discovered</h3>
+    <p>Run a recon scan and every host the sweep finds will appear here with its ports and worst finding.</p>
+    <a class="btn primary" href="/scan">{{ icon('scan') }} Run recon</a>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

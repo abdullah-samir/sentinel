@@ -231,6 +231,34 @@
     if (e.key === "Escape" && body.classList.contains("nav-open")) setOpen(false);
   });
 })();
+
+/* Post-login intro — once, after a successful login (fresh one-shot flag the
+   login page armed). Skippable (tap/key); reduced-motion = instant; never
+   blocks access (JS off/failed -> dashboard just renders). */
+(function () {
+  "use strict";
+  var KEY = "sentinel_intro", raw = null;
+  try { raw = localStorage.getItem(KEY); localStorage.removeItem(KEY); } catch (e) { return; }
+  if (!raw) return;
+  var ts = parseInt(raw, 10);
+  if (!ts || (Date.now() - ts) > 60000) return;          // stale -> skip
+  var reduce = false;
+  try { reduce = window.matchMedia("(prefers-reduced-motion:reduce)").matches; } catch (e) {}
+  if (reduce) return;                                     // instant: no overlay
+  var ov = document.createElement("div");
+  ov.className = "intro-ov"; ov.setAttribute("aria-hidden", "true");
+  ov.innerHTML = '<div class="intro-rings"></div><div class="intro-radar"></div>';
+  document.body.appendChild(ov);
+  var done = false;
+  function kill() {
+    if (done) return; done = true;
+    if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    document.removeEventListener("keydown", kill, true);
+  }
+  ov.addEventListener("click", kill);
+  document.addEventListener("keydown", kill, true);
+  setTimeout(kill, 1800);
+})();
 </script>
 {% endif %}
 {% if user and active %}

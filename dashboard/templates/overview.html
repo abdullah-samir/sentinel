@@ -127,7 +127,12 @@
     </div>
   </form>
   {% else %}
-  <div class="empty">No runs yet. <a href="/scan">Start a scan</a>, or run one from the CLI.</div>
+  <div class="empty-state">
+    <div class="es-ico">{{ icon('radar', 'ic-lg') }}</div>
+    <h3>No runs yet</h3>
+    <p>Kick off a scan and your run history, hosts, and findings will light up on the grid here.</p>
+    <a class="btn primary" href="/scan">{{ icon('plus') }} New scan</a>
+  </div>
   {% endif %}
 </div>
 

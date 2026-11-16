@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ code }} · {{ heading }}{% endblock %}
+{% block content %}
+<div class="errpage">
+  <div class="err-radar" aria-hidden="true"></div>
+  <div class="err-code">{{ code }}</div>
+  <h1>{{ heading }}</h1>
+  <p>{{ message }}</p>
+  <a class="btn primary" href="/">{{ icon('grid') }} Back to overview</a>
+</div>
+{% endblock %}
